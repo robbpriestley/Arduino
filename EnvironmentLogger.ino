@@ -9,6 +9,10 @@
 File _logfile;
 RTC_PCF8523 _rtc;
 
+bool _statusReady;
+bool _statusError;
+bool _statusInitError;
+String _errorMessage;
 int _recordingPeriod = 1500;
 const String RECORDING_PERIOD_UNITS = " ms";
 
@@ -35,33 +39,35 @@ void setup()
 void loop() 
 {
   String timestamp = GetTimestamp();
-  
+
   int sdCardIn = digitalRead(READ_D_PIN_LOGGER_CD);            // Is an SD card inserted?
   int sdCardWriteProtect = digitalRead(READ_D_PIN_LOGGER_WP);  // Is the SD card write protected?
 
-  String errorMessage;
-  bool statusError = DetermineStatusError(sdCardIn, sdCardWriteProtect, errorMessage);
-  bool statusReady = !statusError && DetermineStatusReady(sdCardIn, sdCardWriteProtect);
+  DetermineStatusError(sdCardIn, sdCardWriteProtect);
+  DetermineStatusReady(sdCardIn, sdCardWriteProtect);
 
-  UpdateStatusLeds(statusReady, statusError);
-
-  float temperature = 100.0;
-  float humidity = 200.0;
-  float pressure = 300.0;
+  float temperature = 0.0;
+  float humidity = 0.0;
+  float pressure = 0.0;
   
-//  float tempReading = analogRead(READ_A_PIN_TEMP);
-//  float voltage = tempReading * REFERENCE_VOLTAGE / 1024;  // 1024 steps
-//  float tempCelsius = (voltage - 0.5) * 100;
-//
-//  Serial.print("tempReading: ");
-//  Serial.print(tempReading);
-//  Serial.print(", voltage: ");
-//  Serial.print(voltage);
-//  Serial.print(", tempCelsius: ");
-//  Serial.println(tempCelsius);
-
-  SdCardWrite(timestamp, temperature, humidity, pressure);
-  UpdateSerial(timestamp, statusReady, statusError, errorMessage, temperature, humidity, pressure);
+  if (!_statusError && !_statusInitError)
+  {
+    //  float tempReading = analogRead(READ_A_PIN_TEMP);
+    //  float voltage = tempReading * REFERENCE_VOLTAGE / 1024;  // 1024 steps
+    //  float tempCelsius = (voltage - 0.5) * 100;
+    //
+    //  Serial.print("tempReading: ");
+    //  Serial.print(tempReading);
+    //  Serial.print(", voltage: ");
+    //  Serial.print(voltage);
+    //  Serial.print(", tempCelsius: ");
+    //  Serial.println(tempCelsius);
+  
+    SdCardWrite(timestamp, temperature, humidity, pressure);
+  }
+  
+  UpdateStatusLeds();
+  UpdateSerial(timestamp, temperature, humidity, pressure);
 
   delay(_recordingPeriod);
 }
@@ -70,7 +76,9 @@ void SdInit()
 {
   if (!SD.begin(READ_D_PIN_SD_CARD))
   {
-    Serial.print("SD card failed, or not present");
+    _statusInitError = true;
+    _errorMessage = "SD card failed, or not present";
+    return;
   }
 
   // Create a new file.
@@ -82,7 +90,7 @@ void SdInit()
     filename[6] = i/10 + '0';
     filename[7] = i%10 + '0';
     
-    if (! SD.exists(filename))
+    if (!SD.exists(filename))
     {
       _logfile = SD.open(filename, FILE_WRITE);  // Only open a new file if it doesn't exist.
       break;
@@ -91,8 +99,8 @@ void SdInit()
   
   if (!_logfile)
   {
-    Serial.print("ERROR: Log file couldn't be created ");
-    Serial.println(filename);
+    _statusInitError = true;
+    _errorMessage = String("Log file couldn't be created ") + String(filename);
   }
   else
   {
@@ -115,7 +123,7 @@ void RtcInit()
 {
   if (!_rtc.begin())
   {
-    Serial.println("ERROR: Couldn't find RTC");
+    Serial.println("Couldn't find RTC");
     while (1);
   }
 
@@ -123,7 +131,8 @@ void RtcInit()
 
   if (!_rtc.initialized())
   {
-    Serial.println("ERROR: RTC is NOT running!");
+    _statusInitError = true;
+    _errorMessage = "RTC is NOT running!";
   }
 }
 
@@ -135,37 +144,35 @@ void DisplayRecordingPeriod()
   Serial.println(RECORDING_PERIOD_UNITS);
 }
 
-bool DetermineStatusError(int sdCardIn, int sdCardWriteProtect, String& errorMessage)
+void DetermineStatusError(int sdCardIn, int sdCardWriteProtect)
 {
   // CD and WP pins are open drain and normal LOW/HIGH logic is reversed.
-  bool statusError = sdCardIn == LOW && sdCardWriteProtect == HIGH;
+  _statusError = sdCardIn == LOW && sdCardWriteProtect == HIGH;
 
-  if (!statusError)
+  if (!_statusError && !_statusInitError)
   {
-    errorMessage = "";
+    _errorMessage = "";
   }
   else if (sdCardIn == LOW && sdCardWriteProtect == HIGH)
   {
-    errorMessage = "CARD WRITE PROTECTED";
+    _errorMessage = "SD card is write protected";
   }
   else
   {
     // ... TBD
   }
-  
-  return statusError;
 }
 
-bool DetermineStatusReady(int sdCardIn, int sdCardWriteProtect)
+void DetermineStatusReady(int sdCardIn, int sdCardWriteProtect)
 {
   // CD and WP pins are open drain and normal LOW/HIGH logic is reversed.
-  return sdCardIn == LOW && sdCardWriteProtect == LOW;
+  _statusReady = !_statusError && sdCardIn == LOW && sdCardWriteProtect == LOW;
 }
 
-void UpdateStatusLeds(bool statusReady, bool statusError)
+void UpdateStatusLeds()
 {
-  int statusReadyWrite = statusReady ? HIGH : LOW;
-  int statusErrorWrite = statusError ? HIGH : LOW;
+  int statusReadyWrite = _statusReady ? HIGH : LOW;
+  int statusErrorWrite = _statusError || _statusInitError ? HIGH : LOW;
   
   digitalWrite(WRITE_D_PIN_READY_LED, statusReadyWrite);
   digitalWrite(WRITE_D_PIN_ERROR_LED, statusErrorWrite);
@@ -198,9 +205,9 @@ void SdCardWrite(String timestamp, float temperature, float humidity, float pres
   _logfile.flush();  // Don't do this too frequently, i.e. < 1s
 }
 
-void UpdateSerial(String timestamp, bool statusReady, bool statusError, String errorMessage, float temperature, float humidity, float pressure)
+void UpdateSerial(String timestamp, float temperature, float humidity, float pressure)
 {
-  if (statusReady)
+  if (_statusReady)
   {
     Serial.print(timestamp);
     Serial.print(", ");
@@ -211,15 +218,17 @@ void UpdateSerial(String timestamp, bool statusReady, bool statusError, String e
     Serial.print(pressure);
     Serial.println();
   }
-  else if (statusError)
+  else if (_statusError || _statusInitError)
   {
-    Serial.print("ERROR: ");
-    Serial.print(errorMessage);
+    Serial.print(timestamp);
+    Serial.print(" ERROR: ");
+    Serial.print(_errorMessage);
     Serial.println();
   }
   else
   {
-    Serial.print("UNKNOWN STATUS");
+    Serial.print(timestamp);
+    Serial.print(" UNKNOWN STATUS");
     Serial.println();
   }
 }
