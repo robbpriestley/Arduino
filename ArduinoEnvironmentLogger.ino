@@ -25,9 +25,9 @@ unsigned long _currentMillisRecord = 0;
 const String RECORD_PERIOD_UNITS = " ms";
 
 const int READ_A_PIN_TEMP = 1;
-const int READ_D_PIN_LOGGER_CD = 9;
-const int READ_D_PIN_LOGGER_WP = 8;
-const int READ_D_PIN_SD_CARD = 10;
+const int READ_D_PIN_SD = 10;          // Base SD card pin
+const int READ_D_PIN_SD_CD = 9;        // SD card CD pin indicates if card is inserted
+const int READ_D_PIN_SD_WP = 8;        // SD card WP pin indicates if card is write protected
 const int WRITE_D_PIN_READY_LED = 7;
 const int WRITE_D_PIN_ERROR_LED = 6;
 const float REFERENCE_VOLTAGE = 5120;  // mV
@@ -49,8 +49,8 @@ void loop()
 {
   String timestamp = GetTimestamp();
 
-  int sdCardIn = digitalRead(READ_D_PIN_LOGGER_CD);            // Is an SD card inserted?
-  int sdCardWriteProtect = digitalRead(READ_D_PIN_LOGGER_WP);  // Is the SD card write protected?
+  int sdCardIn = digitalRead(READ_D_PIN_SD_CD);            // Is an SD card inserted?
+  int sdCardWriteProtect = digitalRead(READ_D_PIN_SD_WP);  // Is the SD card write protected?
 
   if (sdCardIn == LOW && !_logfile)  // SD card is in but file has not been initialized.
   {
@@ -93,7 +93,7 @@ void loop()
 
 void SdInit()
 {
-  if (!SD.begin(READ_D_PIN_SD_CARD))
+  if (!SD.begin(READ_D_PIN_SD))
   {
     _statusError = true;
     _errorMessage = "SD card failed, or not present";
@@ -125,9 +125,9 @@ void SdInit()
 
 void PinInit()
 {
-  pinMode(READ_D_PIN_SD_CARD, OUTPUT);
-  pinMode(READ_D_PIN_LOGGER_CD, INPUT_PULLUP);
-  pinMode(READ_D_PIN_LOGGER_WP, INPUT_PULLUP);
+  pinMode(READ_D_PIN_SD, OUTPUT);
+  pinMode(READ_D_PIN_SD_CD, INPUT_PULLUP);
+  pinMode(READ_D_PIN_SD_WP, INPUT_PULLUP);
 
   pinMode(WRITE_D_PIN_READY_LED, OUTPUT);
   pinMode(WRITE_D_PIN_ERROR_LED, OUTPUT);
