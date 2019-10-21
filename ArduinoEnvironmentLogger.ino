@@ -17,13 +17,16 @@ String _errorMessage;
 bool _flash;
 bool _button;
 int _periodFlash = 333;
+int _recordingPeriodIndex = 0;
+
 unsigned long _lastMillisFlash = 0;
 unsigned long _currentMillisFlash = 0;
-
-unsigned long _periodRecord;
 unsigned long _lastMillisRecord = 0;
 unsigned long _currentMillisRecord = 0;
-const String RECORD_PERIOD_UNITS = " ms";
+
+const int RECORDING_PERIOD_ARRAY_LEN = 6;
+const int _recordingPeriodMins[RECORDING_PERIOD_ARRAY_LEN] = { 1, 5, 15, 30, 60, 90 };
+const unsigned long _recordingPeriodMillis[RECORDING_PERIOD_ARRAY_LEN] = { 60000, 300000, 900000, 1800000, 3600000, 5400000 };
 
 const int READ_A_PIN_TEMP = 1;
 const int READ_D_PIN_BUTTON = 5;
@@ -43,7 +46,6 @@ void setup()
   RtcInit();
 
   _first = true;
-  _periodRecord = 300000;
   DisplayRecordingPeriod();
 }
 
@@ -72,7 +74,7 @@ void loop()
   {
     UpdateSerial(timestamp, 0, 0, 0);
   }
-  else if (_currentMillisRecord - _lastMillisRecord >= _periodRecord || _first)
+  else if (_currentMillisRecord - _lastMillisRecord >= _recordingPeriodMillis[_recordingPeriodIndex] || _first)
   {
     float temperature = TemperatureReading();
     float humidity = HumidityReading();
@@ -142,10 +144,10 @@ void RtcInit()
 
 void DisplayRecordingPeriod()
 {
+  int mins = _recordingPeriodMins[_recordingPeriodIndex];
   Serial.print("Recording Period: ");
-  Serial.print(_periodRecord);
-  Serial.print(" ");
-  Serial.println(RECORD_PERIOD_UNITS);
+  Serial.print(mins);
+  Serial.println(mins == 1 ? " minute" : " minutes");
 }
 
 void CheckSdInit(int sdCardIn)
@@ -206,8 +208,10 @@ void ButtonStatus()
   }
   else if (_button)
   {
+    _first = true;
     _button = false;
-    Serial.println("BUTTON");
+    _recordingPeriodIndex = _recordingPeriodIndex == RECORDING_PERIOD_ARRAY_LEN - 1 ? 0 : _recordingPeriodIndex + 1;
+    DisplayRecordingPeriod();
   }
 }
 
