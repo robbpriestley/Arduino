@@ -15,6 +15,7 @@ bool _statusError;
 String _errorMessage;
 
 bool _flash;
+bool _button;
 int _periodFlash = 333;
 unsigned long _lastMillisFlash = 0;
 unsigned long _currentMillisFlash = 0;
@@ -25,6 +26,7 @@ unsigned long _currentMillisRecord = 0;
 const String RECORD_PERIOD_UNITS = " ms";
 
 const int READ_A_PIN_TEMP = 1;
+const int READ_D_PIN_BUTTON = 5;
 const int READ_D_PIN_SD = 10;          // SD card base access pin
 const int READ_D_PIN_SD_CD = 9;        // SD card CD pin indicates if card is inserted
 const int READ_D_PIN_SD_WP = 8;        // SD card WP pin indicates if card is write protected
@@ -52,14 +54,10 @@ void loop()
   int sdCardIn = digitalRead(READ_D_PIN_SD_CD);            // Is an SD card inserted?
   int sdCardWriteProtect = digitalRead(READ_D_PIN_SD_WP);  // Is the SD card write protected?
 
-  if (sdCardIn == LOW && !_logfile)  // SD card is in but file has not been initialized.
-  {
-    SdInit();
-  }
-
+  CheckSdInit(sdCardIn);
   DetermineStatusError(sdCardIn, sdCardWriteProtect);
   DetermineStatusReady(sdCardIn, sdCardWriteProtect);
-  
+  ButtonStatus();
   UpdateStatusLeds();
 
   _currentMillisFlash = millis();
@@ -76,13 +74,10 @@ void loop()
   }
   else if (_currentMillisRecord - _lastMillisRecord >= _periodRecord || _first)
   {
-    float humidity = 0.0;
-    float pressure = 0.0;
-
-    // TMP36 https://learn.adafruit.com/tmp36-temperature-sensor
-    int tempReading = analogRead(READ_A_PIN_TEMP);
-    float temperature = (tempReading * (REFERENCE_VOLTAGE / 1024) - 500.0) / 10.0;
-  
+    float temperature = TemperatureReading();
+    float humidity = HumidityReading();
+    float pressure = PressureReading();
+    
     SdCardWrite(timestamp, temperature, humidity, pressure);
     UpdateSerial(timestamp, temperature, humidity, pressure);
 
@@ -125,6 +120,7 @@ void SdInit()
 
 void PinInit()
 {
+  pinMode(READ_D_PIN_BUTTON, INPUT);
   pinMode(READ_D_PIN_SD, OUTPUT);
   pinMode(READ_D_PIN_SD_CD, INPUT_PULLUP);
   pinMode(READ_D_PIN_SD_WP, INPUT_PULLUP);
@@ -150,6 +146,14 @@ void DisplayRecordingPeriod()
   Serial.print(_periodRecord);
   Serial.print(" ");
   Serial.println(RECORD_PERIOD_UNITS);
+}
+
+void CheckSdInit(int sdCardIn)
+{
+  if (sdCardIn == LOW && !_logfile)  // SD card is in but file has not been initialized.
+  {
+    SdInit();
+  }
 }
 
 void DetermineStatusError(int sdCardIn, int sdCardWriteProtect)
@@ -192,6 +196,21 @@ void DetermineStatusReady(int sdCardIn, int sdCardWriteProtect)
   _statusReady = !_statusError && sdCardIn == LOW && sdCardWriteProtect == LOW;
 }
 
+void ButtonStatus()
+{
+  int buttonState = digitalRead(READ_D_PIN_BUTTON);
+
+  if (buttonState == HIGH)
+  {
+    _button = true;
+  }
+  else if (_button)
+  {
+    _button = false;
+    Serial.println("BUTTON");
+  }
+}
+
 void UpdateStatusLeds()
 {
   int statusReadyWrite = _statusReady && !_flash ? HIGH : LOW;
@@ -212,6 +231,23 @@ String GetTimestamp()
   String second = now.second() < 10 ? "0" + String(now.second()) : String(now.second());
 
   return String(now.year()) + "-" + month + "-" + day + " " + hour + ":" + minute + ":" + second;
+}
+
+float TemperatureReading()
+{
+  // TMP36 https://learn.adafruit.com/tmp36-temperature-sensor
+  int tempReading = analogRead(READ_A_PIN_TEMP);
+  return (tempReading * (REFERENCE_VOLTAGE / 1024) - 500.0) / 10.0;
+}
+
+float HumidityReading()
+{
+  return 0.0;
+}
+
+float PressureReading()
+{
+  return 0.0;
 }
 
 void SdCardWrite(String timestamp, float temperature, float humidity, float pressure)
