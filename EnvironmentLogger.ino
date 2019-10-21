@@ -9,6 +9,7 @@
 File _logfile;
 RTC_PCF8523 _rtc;
 
+bool _first;
 bool _statusReady;
 bool _statusError;
 String _errorMessage;
@@ -18,7 +19,7 @@ int _periodFlash = 333;
 unsigned long _lastMillisFlash = 0;
 unsigned long _currentMillisFlash = 0;
 
-int _periodRecord = 1500;
+unsigned long _periodRecord;
 unsigned long _lastMillisRecord = 0;
 unsigned long _currentMillisRecord = 0;
 const String RECORD_PERIOD_UNITS = " ms";
@@ -39,6 +40,8 @@ void setup()
   PinInit();
   RtcInit();
 
+  _first = true;
+  _periodRecord = 300000;
   DisplayRecordingPeriod();
 }
 
@@ -71,7 +74,7 @@ void loop()
   {
     UpdateSerial(timestamp, 0, 0, 0);
   }
-  else if (_currentMillisRecord - _lastMillisRecord >= _periodRecord)
+  else if (_currentMillisRecord - _lastMillisRecord >= _periodRecord || _first)
   {
     float humidity = 0.0;
     float pressure = 0.0;
@@ -84,6 +87,7 @@ void loop()
     UpdateSerial(timestamp, temperature, humidity, pressure);
 
     _lastMillisRecord = _currentMillisRecord;
+    _first = false;
   }
 }
 
@@ -223,7 +227,7 @@ void SdCardWrite(String timestamp, float temperature, float humidity, float pres
 
   _logfile.flush();  // Don't do this too frequently, i.e. < 1s
 
-  _flash = true;
+  _flash = !_first;  // Don't flash the LED the first time.
   _lastMillisFlash = _currentMillisFlash;
 }
 
