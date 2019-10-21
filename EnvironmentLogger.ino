@@ -29,7 +29,7 @@ const int READ_D_PIN_LOGGER_WP = 8;
 const int READ_D_PIN_SD_CARD = 10;
 const int WRITE_D_PIN_READY_LED = 7;
 const int WRITE_D_PIN_ERROR_LED = 6;
-const float REFERENCE_VOLTAGE = 5.12;
+const float REFERENCE_VOLTAGE = 5120;  // mV
 
 void setup() 
 {
@@ -73,20 +73,12 @@ void loop()
   }
   else if (_currentMillisRecord - _lastMillisRecord >= _periodRecord)
   {
-    float temperature = 0.0;
     float humidity = 0.0;
     float pressure = 0.0;
-    
-    //  float tempReading = analogRead(READ_A_PIN_TEMP);
-    //  float voltage = tempReading * REFERENCE_VOLTAGE / 1024;  // 1024 steps
-    //  float tempCelsius = (voltage - 0.5) * 100;
-    //
-    //  Serial.print("tempReading: ");
-    //  Serial.print(tempReading);
-    //  Serial.print(", voltage: ");
-    //  Serial.print(voltage);
-    //  Serial.print(", tempCelsius: ");
-    //  Serial.println(tempCelsius);
+
+    // TMP36 https://learn.adafruit.com/tmp36-temperature-sensor
+    int tempReading = analogRead(READ_A_PIN_TEMP);
+    float temperature = (tempReading * (REFERENCE_VOLTAGE / 1024) - 500.0) / 10.0;
   
     SdCardWrite(timestamp, temperature, humidity, pressure);
     UpdateSerial(timestamp, temperature, humidity, pressure);
