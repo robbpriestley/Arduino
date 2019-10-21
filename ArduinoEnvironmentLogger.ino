@@ -25,11 +25,11 @@ unsigned long _currentMillisRecord = 0;
 const String RECORD_PERIOD_UNITS = " ms";
 
 const int READ_A_PIN_TEMP = 1;
-const int READ_D_PIN_SD = 10;          // Base SD card pin
+const int READ_D_PIN_SD = 10;          // SD card base access pin
 const int READ_D_PIN_SD_CD = 9;        // SD card CD pin indicates if card is inserted
 const int READ_D_PIN_SD_WP = 8;        // SD card WP pin indicates if card is write protected
-const int WRITE_D_PIN_READY_LED = 7;
-const int WRITE_D_PIN_ERROR_LED = 6;
+const int WRITE_D_PIN_READY_LED = 7;   // Green LED
+const int WRITE_D_PIN_ERROR_LED = 6;   // Red LED
 const float REFERENCE_VOLTAGE = 5120;  // mV
 
 void setup() 
