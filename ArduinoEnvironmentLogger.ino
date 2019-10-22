@@ -29,20 +29,20 @@ unsigned long _lastMillisRecord = 0;
 unsigned long _currentMillisRecord = 0;
 
 int _recordingPeriodIndex = 0;
-const int RECORDING_PERIOD_ARRAY_LEN = 6;
-const int _recordingPeriodMins[RECORDING_PERIOD_ARRAY_LEN] = { 1, 5, 15, 30, 60, 90 };
-const unsigned long _recordingPeriodMillis[RECORDING_PERIOD_ARRAY_LEN] = { 60000, 300000, 900000, 1800000, 3600000, 5400000 };
+const int REC_PERIOD_ARRAY_LEN = 6;
+const int _recordingPeriodMins[REC_PERIOD_ARRAY_LEN] = { 1, 5, 15, 30, 60, 90 };
+const unsigned long _recordingPeriodMillis[REC_PERIOD_ARRAY_LEN] = { 60000, 300000, 900000, 1800000, 3600000, 5400000 };
 
 const int READ_A_PIN_TEMP = 1;
-const int READ_D_PIN_BUTTON_DISPLAY_ENABLED = 4;
-const int READ_D_PIN_BUTTON_RECORDING_PERIOD = 5;
-const int READ_D_PIN_SD = 10;                      // SD card base access pin
-const int READ_D_PIN_SD_CD = 9;                    // SD card CD pin indicates if card is inserted
-const int READ_D_PIN_SD_WP = 8;                    // SD card WP pin indicates if card is write protected
-const int WRITE_D_PIN_READY_LED = 7;               // Green LED
-const int WRITE_D_PIN_ERROR_LED = 6;               // Red LED
-const int EEPROM_ADDRESS_RECORDING_PERIOD_INDEX = 0;
-const float REFERENCE_VOLTAGE = 5120;              // mV
+const int READ_D_PIN_BUTTON_DISP_EN = 4;      // Button to turn display on and off
+const int READ_D_PIN_BUTTON_REC_PERIOD = 5;   // Button to change recording period
+const int READ_D_PIN_SD = 10;                 // SD card base access pin
+const int READ_D_PIN_SD_CD = 9;               // SD card CD pin indicates if card is inserted
+const int READ_D_PIN_SD_WP = 8;               // SD card WP pin indicates if card is write protected
+const int WRITE_D_PIN_READY_LED = 7;          // Green LED
+const int WRITE_D_PIN_ERROR_LED = 6;          // Red LED
+const int EEPROM_ADDRESS_REC_PERIOD_IDX = 0;  // EEPROM Address for Recording Period Index
+const float REFERENCE_VOLTAGE = 5120;         // In mV
 
 void setup() 
 {
@@ -132,7 +132,7 @@ void SdInit()
 
 void PinInit()
 {
-  pinMode(READ_D_PIN_BUTTON_RECORDING_PERIOD, INPUT);
+  pinMode(READ_D_PIN_BUTTON_REC_PERIOD, INPUT);
   pinMode(READ_D_PIN_SD, OUTPUT);
   pinMode(READ_D_PIN_SD_CD, INPUT_PULLUP);
   pinMode(READ_D_PIN_SD_WP, INPUT_PULLUP);
@@ -154,13 +154,13 @@ void RtcInit()
 
 void RetrieveRecordingPeriodIndex()
 {
-  EEPROM.get(EEPROM_ADDRESS_RECORDING_PERIOD_INDEX, _recordingPeriodIndex);
+  EEPROM.get(EEPROM_ADDRESS_REC_PERIOD_IDX, _recordingPeriodIndex);
 
-  if (_recordingPeriodIndex < 0 || _recordingPeriodIndex >= RECORDING_PERIOD_ARRAY_LEN)
+  if (_recordingPeriodIndex < 0 || _recordingPeriodIndex >= REC_PERIOD_ARRAY_LEN)
   {
     // Bad value stored in EEPROM, or first time use.
     _recordingPeriodIndex = 0;
-    EEPROM.put(EEPROM_ADDRESS_RECORDING_PERIOD_INDEX, 0);
+    EEPROM.put(EEPROM_ADDRESS_REC_PERIOD_IDX, 0);
   }
 }
 
@@ -224,7 +224,7 @@ void ButtonStatus()
 {
   // Button Recording Period
   
-  int buttonRecordingPeriodState = digitalRead(READ_D_PIN_BUTTON_RECORDING_PERIOD);
+  int buttonRecordingPeriodState = digitalRead(READ_D_PIN_BUTTON_REC_PERIOD);
 
   if (buttonRecordingPeriodState == HIGH)
   {
@@ -234,14 +234,14 @@ void ButtonStatus()
   {
     _first = true;
     _buttonRecordingPeriod = false;
-    _recordingPeriodIndex = _recordingPeriodIndex == RECORDING_PERIOD_ARRAY_LEN - 1 ? 0 : _recordingPeriodIndex + 1;
-    EEPROM.put(EEPROM_ADDRESS_RECORDING_PERIOD_INDEX, _recordingPeriodIndex);
+    _recordingPeriodIndex = _recordingPeriodIndex == REC_PERIOD_ARRAY_LEN - 1 ? 0 : _recordingPeriodIndex + 1;
+    EEPROM.put(EEPROM_ADDRESS_REC_PERIOD_IDX, _recordingPeriodIndex);
     DisplayRecordingPeriod();
   }
 
   // Button Display Enabled
 
-  int buttonDisplayEnabledState = digitalRead(READ_D_PIN_BUTTON_DISPLAY_ENABLED);
+  int buttonDisplayEnabledState = digitalRead(READ_D_PIN_BUTTON_DISP_EN);
 
   if (buttonDisplayEnabledState == HIGH)
   {
