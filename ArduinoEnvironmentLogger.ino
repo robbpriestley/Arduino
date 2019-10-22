@@ -6,6 +6,7 @@
 
 #include <SD.h>
 #include <SPI.h>
+#include <EEPROM.h>
 #include "RTClib.h"
 
 File _logfile;
@@ -21,12 +22,13 @@ bool _buttonRecordingPeriod;
 
 String _errorMessage;
 int _periodFlash = 333;
-int _recordingPeriodIndex = 0;
+
 unsigned long _lastMillisFlash = 0;
 unsigned long _currentMillisFlash = 0;
 unsigned long _lastMillisRecord = 0;
 unsigned long _currentMillisRecord = 0;
 
+int _recordingPeriodIndex = 0;
 const int RECORDING_PERIOD_ARRAY_LEN = 6;
 const int _recordingPeriodMins[RECORDING_PERIOD_ARRAY_LEN] = { 1, 5, 15, 30, 60, 90 };
 const unsigned long _recordingPeriodMillis[RECORDING_PERIOD_ARRAY_LEN] = { 60000, 300000, 900000, 1800000, 3600000, 5400000 };
@@ -39,6 +41,7 @@ const int READ_D_PIN_SD_CD = 9;                    // SD card CD pin indicates i
 const int READ_D_PIN_SD_WP = 8;                    // SD card WP pin indicates if card is write protected
 const int WRITE_D_PIN_READY_LED = 7;               // Green LED
 const int WRITE_D_PIN_ERROR_LED = 6;               // Red LED
+const int EEPROM_ADDRESS_RECORDING_PERIOD_INDEX = 0;
 const float REFERENCE_VOLTAGE = 5120;              // mV
 
 void setup() 
@@ -51,6 +54,8 @@ void setup()
 
   _first = true;
   _displayEnabled = true;
+
+  RetrieveRecordingPeriodIndex();
   DisplayRecordingPeriod();
 }
 
@@ -147,6 +152,18 @@ void RtcInit()
   // _rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));  // Uncomment to set date and time.
 }
 
+void RetrieveRecordingPeriodIndex()
+{
+  EEPROM.get(EEPROM_ADDRESS_RECORDING_PERIOD_INDEX, _recordingPeriodIndex);
+
+  if (_recordingPeriodIndex < 0 || _recordingPeriodIndex >= RECORDING_PERIOD_ARRAY_LEN)
+  {
+    // Bad value stored in EEPROM, or first time use.
+    _recordingPeriodIndex = 0;
+    EEPROM.put(EEPROM_ADDRESS_RECORDING_PERIOD_INDEX, 0);
+  }
+}
+
 void DisplayRecordingPeriod()
 {
   int mins = _recordingPeriodMins[_recordingPeriodIndex];
@@ -218,6 +235,7 @@ void ButtonStatus()
     _first = true;
     _buttonRecordingPeriod = false;
     _recordingPeriodIndex = _recordingPeriodIndex == RECORDING_PERIOD_ARRAY_LEN - 1 ? 0 : _recordingPeriodIndex + 1;
+    EEPROM.put(EEPROM_ADDRESS_RECORDING_PERIOD_INDEX, _recordingPeriodIndex);
     DisplayRecordingPeriod();
   }
 
