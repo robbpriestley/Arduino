@@ -1,6 +1,8 @@
 // https://learn.adafruit.com/adafruit_data_logger_shield/light_and_temperature_logger_use_it
 // https://learn.adafruit.com/adafruit_data_logger_shield/using_the_real_time_clock_2
 // https://cdn-learn.adafruit.com/downloads/pdf/adafruit-data-logger-shield.pdf
+// https://www.arduino.cc/en/tutorial/button 
+// LED resistors: 2k, Switch pull-down resistors: 10k
 
 #include <SD.h>
 #include <SPI.h>
@@ -10,15 +12,16 @@ File _logfile;
 RTC_PCF8523 _rtc;
 
 bool _first;
+bool _flash;
 bool _statusReady;
 bool _statusError;
-String _errorMessage;
+bool _displayEnabled;
+bool _buttonDisplayEnabled;
+bool _buttonRecordingPeriod;
 
-bool _flash;
-bool _button;
+String _errorMessage;
 int _periodFlash = 333;
 int _recordingPeriodIndex = 0;
-
 unsigned long _lastMillisFlash = 0;
 unsigned long _currentMillisFlash = 0;
 unsigned long _lastMillisRecord = 0;
@@ -29,13 +32,14 @@ const int _recordingPeriodMins[RECORDING_PERIOD_ARRAY_LEN] = { 1, 5, 15, 30, 60,
 const unsigned long _recordingPeriodMillis[RECORDING_PERIOD_ARRAY_LEN] = { 60000, 300000, 900000, 1800000, 3600000, 5400000 };
 
 const int READ_A_PIN_TEMP = 1;
-const int READ_D_PIN_BUTTON = 5;
-const int READ_D_PIN_SD = 10;          // SD card base access pin
-const int READ_D_PIN_SD_CD = 9;        // SD card CD pin indicates if card is inserted
-const int READ_D_PIN_SD_WP = 8;        // SD card WP pin indicates if card is write protected
-const int WRITE_D_PIN_READY_LED = 7;   // Green LED
-const int WRITE_D_PIN_ERROR_LED = 6;   // Red LED
-const float REFERENCE_VOLTAGE = 5120;  // mV
+const int READ_D_PIN_BUTTON_DISPLAY_ENABLED = 4;
+const int READ_D_PIN_BUTTON_RECORDING_PERIOD = 5;
+const int READ_D_PIN_SD = 10;                      // SD card base access pin
+const int READ_D_PIN_SD_CD = 9;                    // SD card CD pin indicates if card is inserted
+const int READ_D_PIN_SD_WP = 8;                    // SD card WP pin indicates if card is write protected
+const int WRITE_D_PIN_READY_LED = 7;               // Green LED
+const int WRITE_D_PIN_ERROR_LED = 6;               // Red LED
+const float REFERENCE_VOLTAGE = 5120;              // mV
 
 void setup() 
 {
@@ -46,6 +50,7 @@ void setup()
   RtcInit();
 
   _first = true;
+  _displayEnabled = true;
   DisplayRecordingPeriod();
 }
 
@@ -122,7 +127,7 @@ void SdInit()
 
 void PinInit()
 {
-  pinMode(READ_D_PIN_BUTTON, INPUT);
+  pinMode(READ_D_PIN_BUTTON_RECORDING_PERIOD, INPUT);
   pinMode(READ_D_PIN_SD, OUTPUT);
   pinMode(READ_D_PIN_SD_CD, INPUT_PULLUP);
   pinMode(READ_D_PIN_SD_WP, INPUT_PULLUP);
@@ -200,28 +205,54 @@ void DetermineStatusReady(int sdCardIn, int sdCardWriteProtect)
 
 void ButtonStatus()
 {
-  int buttonState = digitalRead(READ_D_PIN_BUTTON);
+  // Button Recording Period
+  
+  int buttonRecordingPeriodState = digitalRead(READ_D_PIN_BUTTON_RECORDING_PERIOD);
 
-  if (buttonState == HIGH)
+  if (buttonRecordingPeriodState == HIGH)
   {
-    _button = true;
+    _buttonRecordingPeriod = true;
   }
-  else if (_button)
+  else if (_buttonRecordingPeriod)
   {
     _first = true;
-    _button = false;
+    _buttonRecordingPeriod = false;
     _recordingPeriodIndex = _recordingPeriodIndex == RECORDING_PERIOD_ARRAY_LEN - 1 ? 0 : _recordingPeriodIndex + 1;
     DisplayRecordingPeriod();
+  }
+
+  // Button Display Enabled
+
+  int buttonDisplayEnabledState = digitalRead(READ_D_PIN_BUTTON_DISPLAY_ENABLED);
+
+  if (buttonDisplayEnabledState == HIGH)
+  {
+    _buttonDisplayEnabled = true;
+  }
+  else if (_buttonDisplayEnabled)
+  {
+    _buttonDisplayEnabled = false;
+    _displayEnabled = !_displayEnabled;
+
+    if (_displayEnabled) Serial.println("DISPLAY ON"); else Serial.println("DISPLAY OFF");
   }
 }
 
 void UpdateStatusLeds()
 {
-  int statusReadyWrite = _statusReady && !_flash ? HIGH : LOW;
-  int statusErrorWrite = _statusError ? HIGH : LOW;
-  
-  digitalWrite(WRITE_D_PIN_READY_LED, statusReadyWrite);
-  digitalWrite(WRITE_D_PIN_ERROR_LED, statusErrorWrite);
+  if (!_displayEnabled)
+  {
+    digitalWrite(WRITE_D_PIN_READY_LED, LOW);
+    digitalWrite(WRITE_D_PIN_ERROR_LED, LOW);
+  }
+  else
+  {
+    int statusReadyWrite = _statusReady && !_flash ? HIGH : LOW;
+    int statusErrorWrite = _statusError ? HIGH : LOW;
+    
+    digitalWrite(WRITE_D_PIN_READY_LED, statusReadyWrite);
+    digitalWrite(WRITE_D_PIN_ERROR_LED, statusErrorWrite);
+  }
 }
 
 String GetTimestamp()
