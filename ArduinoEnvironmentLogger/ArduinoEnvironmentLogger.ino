@@ -2,6 +2,7 @@
 // https://learn.adafruit.com/adafruit_data_logger_shield/using_the_real_time_clock_2
 // https://cdn-learn.adafruit.com/downloads/pdf/adafruit-data-logger-shield.pdf
 // https://www.arduino.cc/en/tutorial/button 
+
 // LED resistors: 2k, Switch pull-down resistors: 10k
 
 #include <SD.h>
