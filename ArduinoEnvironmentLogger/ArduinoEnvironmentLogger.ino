@@ -1,3 +1,6 @@
+// *** ENVIRONMENT LOGGER ***
+// Logs temperature in °C, humidity in %, and pressure in hPa
+
 // Data Logging Tutorial:    https://learn.adafruit.com/adafruit_data_logger_shield/light_and_temperature_logger_use_it
 // Data Logger Shield Specs: https://cdn-learn.adafruit.com/downloads/pdf/adafruit-data-logger-shield.pdf
 // Realtime Clock (RTC):     https://learn.adafruit.com/adafruit_data_logger_shield/using_the_real_time_clock_2
@@ -23,7 +26,7 @@ bool _displayEnabled;
 bool _buttonDisplayEnabled;
 bool _buttonRecordingPeriod;
 
-String _errorMessage;
+int _errorCode = 0;
 int _periodFlash = 333;
 
 unsigned long _lastMillisFlash = 0;
@@ -49,21 +52,47 @@ const int WRITE_D_PIN_ERROR_LED = 6;          // Red LED
 const int EEPROM_ADDRESS_REC_PERIOD_IDX = 0;  // EEPROM Address for Recording Period Index
 const float REFERENCE_VOLTAGE = 5120;         // In mV
 
+const char* C_STARTUP_MESSAGE = "ENVIRONMENT LOGGER";
+const char* C_DEBUG_MODE = "DEBUG MODE";
+const char* C_REC_PERIOD = "REC PERIOD";
+const char* C_DISPLAY = "DISPLAY";
+const char* C_ERROR = "ERROR";
+const char* C_STARS = "***";
+const char C_COMMA = ',';
+const char C_SPACE = ' ';
+
 File _logfile;
 RTC_PCF8523 _rtc;
 DHT _dht(READ_D_PIN_DHT, DHTTYPE);
 
+/*
+  ERROR CODES:
+  0: No error
+  1: SD card failed, or not present
+  2: Could not init RTC
+  3: RTC is not running
+  4: SD card is not inserted
+  5: SD card is write protected
+  6: Log file error
+  7: Expected _statusReady would be false, but it is true
+ */
+
 void setup() 
 {
   Serial.begin(57600);
-  Serial.println("*** ENVIRONMENT LOGGER ***");
+  
+  Serial.print(C_STARS);
+  Serial.print(C_SPACE);
+  Serial.print(C_STARTUP_MESSAGE);
+  Serial.print(C_SPACE);
+  Serial.println(C_STARS);
     
   PinInit();
   RtcInit();
   _dht.begin();
 
   _first = true;
-  _debug = false;
+  _debug = true;
   _displayEnabled = true;
 
   SetRecordingPeriodIndex();
@@ -112,7 +141,7 @@ void SdInit()
   if (!SD.begin(READ_D_PIN_SD))
   {
     _statusError = true;
-    _errorMessage = "SD card failed, or not present";
+    _errorCode = 1;
     return;
   }
 
@@ -134,7 +163,6 @@ void SdInit()
   
   if (_logfile)
   {
-    Serial.print("Logging to: ");
     Serial.println(filename);
   }
 }
@@ -155,7 +183,10 @@ void RtcInit()
 {
   if (!_rtc.begin())
   {
-    Serial.println("Could not init RTC");
+    _errorCode = 2;
+    Serial.print(C_ERROR);
+    Serial.print(C_SPACE);
+    Serial.println(_errorCode);
     while (1);
   }
 
@@ -187,14 +218,14 @@ void DisplayRecordingPeriod()
 {
   if (_debug)
   {
-    Serial.println("Recording Period: 2 seconds (DEBUG MODE)");
+    Serial.println(C_DEBUG_MODE);
   }
   else
   {
     int mins = _recordingPeriodMins[_recordingPeriodIndex];
-    Serial.print("Recording Period: ");
-    Serial.print(mins);
-    Serial.println(mins == 1 ? " minute" : " minutes");
+    Serial.print(C_REC_PERIOD);
+    Serial.print(C_SPACE);
+    Serial.println(mins);
   }
 }
 
@@ -211,7 +242,7 @@ void DetermineStatusError(int sdCardIn, int sdCardWriteProtect)
   if (!_rtc.initialized())
   {
     _statusError = true;
-    _errorMessage = "RTC is not running.";
+    _errorCode = 3;
   }
   else if (sdCardIn == HIGH)  // CD and WP pins are open drain and normal LOW/HIGH logic is reversed.
   {
@@ -221,22 +252,22 @@ void DetermineStatusError(int sdCardIn, int sdCardWriteProtect)
     }
     
     _statusError = true;
-    _errorMessage = "SD card is not inserted.";
+    _errorCode = 4;
   }
   else if (sdCardIn == LOW && sdCardWriteProtect == HIGH)  // CD and WP pins are open drain and normal LOW/HIGH logic is reversed.
   {
     _statusError = true;
-    _errorMessage = "SD card is write protected.";
+    _errorCode = 5;
   }
   else if (!_logfile)
   {
     _statusError = true;
-    _errorMessage = "Log file error.";
+    _errorCode = 6;
   }
   else  // No error.
   {
     _statusError = false;
-    _errorMessage = "";
+    _errorCode = 0;
   }
 }
 
@@ -278,14 +309,9 @@ void ButtonStatus()
     _buttonDisplayEnabled = false;
     _displayEnabled = !_displayEnabled;
 
-    if (_displayEnabled)
-    {
-      Serial.println("DISPLAY ON");
-    }
-    else 
-    {
-      Serial.println("DISPLAY OFF");
-    }
+    Serial.print(C_DISPLAY);
+    Serial.print(C_SPACE);
+    Serial.println(_displayEnabled);
   }
 }
 
@@ -318,11 +344,11 @@ void SdCardWrite(float temperature, float humidity, float pressure)
   String timestamp = GetTimestamp();
   
   _logfile.print(timestamp);
-  _logfile.print(", ");
+  _logfile.print(C_COMMA);
   _logfile.print(temperature);
-  _logfile.print(", ");
+  _logfile.print(C_COMMA);
   _logfile.print(humidity);
-  _logfile.print(", ");
+  _logfile.print(C_COMMA);
   _logfile.print(pressure);
   _logfile.println();
 
@@ -351,27 +377,23 @@ void UpdateSerial()
   
   if (_debug)
   {
-    Serial.print("DEBUG MODE ");
+    Serial.println(C_DEBUG_MODE);
   }
   
   if (_statusReady)
   {
-    Serial.print("ERROR: Expected _statusReady would be false, but it is true");
-    Serial.println();
+    _errorCode = 7;
   }
-  else if (_statusError)
+  else if (!_statusError)
   {
-    Serial.print(timestamp);
-    Serial.print(" ERROR: ");
-    Serial.print(_errorMessage);
-    Serial.println();
+    _errorCode = 8;
   }
-  else
-  {
-    Serial.print(timestamp);
-    Serial.print(" UNKNOWN STATUS");
-    Serial.println();
-  }
+
+  Serial.print(timestamp);
+  Serial.print(C_SPACE);
+  Serial.print(C_ERROR);
+  Serial.print(C_SPACE);
+  Serial.println(_errorCode);
 }
 
 void UpdateSerial(float temperature, float humidity, float pressure)
@@ -380,32 +402,35 @@ void UpdateSerial(float temperature, float humidity, float pressure)
 
   if (_debug)
   {
-    Serial.print("DEBUG MODE ");
+    Serial.print(C_DEBUG_MODE);
+    Serial.print(C_SPACE);
   }
   
   if (_statusReady)
   {
     Serial.print(timestamp);
-    Serial.print(", ");
+    Serial.print(C_COMMA);
     Serial.print(temperature);
-    Serial.print(" °C, ");
+    Serial.print(C_COMMA);
     Serial.print(humidity);
-    Serial.print(" %, ");
-    Serial.print(pressure);
-    Serial.print(" hPa");
-    Serial.println();
+    Serial.print(C_COMMA);
+    Serial.println(pressure);
   }
   else if (_statusError)
   {
     Serial.print(timestamp);
-    Serial.print(" ERROR: ");
-    Serial.print(_errorMessage);
-    Serial.println();
+    Serial.print(C_SPACE);
+    Serial.print(C_ERROR);
+    Serial.print(C_SPACE);
+    Serial.println(_errorCode);
   }
   else
   {
+    _errorCode = 8;
     Serial.print(timestamp);
-    Serial.print(" UNKNOWN STATUS");
-    Serial.println();
+    Serial.print(C_SPACE);
+    Serial.print(C_ERROR);
+    Serial.print(C_SPACE);
+    Serial.println(_errorCode);
   }
 }
