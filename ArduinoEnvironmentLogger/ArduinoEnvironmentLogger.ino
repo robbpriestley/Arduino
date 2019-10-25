@@ -278,7 +278,14 @@ void ButtonStatus()
     _buttonDisplayEnabled = false;
     _displayEnabled = !_displayEnabled;
 
-    if (_displayEnabled) Serial.println("DISPLAY ON"); else Serial.println("DISPLAY OFF");
+    if (_displayEnabled)
+    {
+      Serial.println("DISPLAY ON");
+    }
+    else 
+    {
+      Serial.println("DISPLAY OFF");
+    }
   }
 }
 
