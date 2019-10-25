@@ -6,14 +6,17 @@
 // Realtime Clock (RTC):     https://learn.adafruit.com/adafruit_data_logger_shield/using_the_real_time_clock_2
 // Button Tutorial:          https://www.arduino.cc/en/tutorial/button 
 // DHT Temperature Sensor:   https://learn.adafruit.com/dht
+// BMP Pressure Sensor:      https://learn.adafruit.com/adafruit-bmp388/arduino
 
 // LED resistors: 2k, Switch pull-down resistors: 10k, DHT pull-up resistor: 10k
 
 #include <SD.h>
 #include <SPI.h>
 #include <EEPROM.h>
+#include <Adafruit_Sensor.h>
 #include "DHT.h"
 #include "RTClib.h"
+#include "Adafruit_BMP3XX.h"
 
 #define DHTTYPE DHT22
 
@@ -63,6 +66,7 @@ const char C_SPACE = ' ';
 
 File _logfile;
 RTC_PCF8523 _rtc;
+Adafruit_BMP3XX _bmp;
 DHT _dht(READ_D_PIN_DHT, DHTTYPE);
 
 /*
@@ -74,7 +78,8 @@ DHT _dht(READ_D_PIN_DHT, DHTTYPE);
   4: SD card is not inserted
   5: SD card is write protected
   6: Log file error
-  7: Expected _statusReady would be false, but it is true
+  7: Unknown status
+  8: BMP read error
  */
 
 void setup() 
@@ -89,10 +94,11 @@ void setup()
     
   PinInit();
   RtcInit();
+  BmpInit();
   _dht.begin();
 
   _first = true;
-  _debug = true;
+  _debug = false;
   _displayEnabled = true;
 
   SetRecordingPeriodIndex();
@@ -126,7 +132,7 @@ void loop()
   {
     float temperature = _dht.readTemperature();
     float humidity = _dht.readHumidity();
-    float pressure = 0.0;
+    float pressure = ReadPressure();
 
     SdCardWrite(temperature, humidity, pressure);
     UpdateSerial(temperature, humidity, pressure);
@@ -191,6 +197,31 @@ void RtcInit()
   }
 
   // _rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));  // Uncomment to set date and time.
+}
+
+void BmpInit()
+{
+  if (!_bmp.begin()) {
+    _errorCode = 9;
+    Serial.print(C_ERROR);
+    Serial.print(C_SPACE);
+    Serial.println(_errorCode);
+    while (1);
+  }
+
+  _bmp.setTemperatureOversampling(BMP3_OVERSAMPLING_8X);
+  _bmp.setPressureOversampling(BMP3_OVERSAMPLING_4X);
+  _bmp.setIIRFilterCoeff(BMP3_IIR_FILTER_COEFF_3);
+
+  // Perform first reading to "clear" bad value
+  if (!_bmp.performReading())
+  {
+    _errorCode = 9;
+    Serial.print(C_ERROR);
+    Serial.print(C_SPACE);
+    Serial.println(_errorCode);
+    return;
+  }
 }
 
 void SetRecordingPeriodIndex()
@@ -332,6 +363,20 @@ void UpdateStatusLeds()
   }
 }
 
+float ReadPressure()
+{
+  if (!_bmp.performReading())
+  {
+    _errorCode = 9;
+    Serial.print(C_ERROR);
+    Serial.print(C_SPACE);
+    Serial.println(_errorCode);
+    return;
+  }
+  
+  return _bmp.pressure / 100.0;
+}
+
 /*
   Previously, GetTimestamp() was called once, at the beginning of the loop() function, and the returned value was stored in a local string variable for re-use.
   However, due to some glitch, if the DHT was accessed after the call to GetTimestamp(), the local string variable value got corrupted and would be populated
@@ -380,13 +425,9 @@ void UpdateSerial()
     Serial.println(C_DEBUG_MODE);
   }
   
-  if (_statusReady)
+  if (_statusReady || !_statusError)
   {
     _errorCode = 7;
-  }
-  else if (!_statusError)
-  {
-    _errorCode = 8;
   }
 
   Serial.print(timestamp);
