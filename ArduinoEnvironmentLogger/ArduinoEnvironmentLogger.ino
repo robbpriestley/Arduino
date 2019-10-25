@@ -16,6 +16,7 @@
 
 bool _first;
 bool _flash;
+bool _debug;
 bool _statusReady;
 bool _statusError;
 bool _displayEnabled;
@@ -30,10 +31,11 @@ unsigned long _currentMillisFlash = 0;
 unsigned long _lastMillisRecord = 0;
 unsigned long _currentMillisRecord = 0;
 
+int _recordingPeriod;
 int _recordingPeriodIndex = 0;
 const int REC_PERIOD_ARRAY_LEN = 6;
 const int _recordingPeriodMins[REC_PERIOD_ARRAY_LEN] = { 1, 5, 15, 30, 60, 90 };
-const unsigned long _recordingPeriodMillis[REC_PERIOD_ARRAY_LEN] = { 60000, 300000, 900000, 1800000, 3600000, 5400000 };
+const int _recordingPeriodMillis[REC_PERIOD_ARRAY_LEN] = { 60000, 300000, 900000, 1800000, 3600000, 5400000 };
 
 const int READ_A_PIN_TEMP = 1;
 const int READ_D_PIN_DHT = 2;                 // Pin used to read the DHT22 temperature sensor
@@ -61,9 +63,10 @@ void setup()
   _dht.begin();
 
   _first = true;
+  _debug = false;
   _displayEnabled = true;
 
-  RetrieveRecordingPeriodIndex();
+  SetRecordingPeriodIndex();
   DisplayRecordingPeriod();
 }
 
@@ -90,7 +93,7 @@ void loop()
   {
     UpdateSerial();
   }
-  else if (_currentMillisRecord - _lastMillisRecord >= _recordingPeriodMillis[_recordingPeriodIndex] || _first)
+  else if (_currentMillisRecord - _lastMillisRecord >= _recordingPeriod || _first)
   {
     float temperature = _dht.readTemperature();
     float humidity = _dht.readHumidity();
@@ -159,24 +162,40 @@ void RtcInit()
   // _rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));  // Uncomment to set date and time.
 }
 
-void RetrieveRecordingPeriodIndex()
+void SetRecordingPeriodIndex()
 {
-  EEPROM.get(EEPROM_ADDRESS_REC_PERIOD_IDX, _recordingPeriodIndex);
-
-  if (_recordingPeriodIndex < 0 || _recordingPeriodIndex >= REC_PERIOD_ARRAY_LEN)
+  if (_debug)
   {
-    // Bad value stored in EEPROM, or first time use.
-    _recordingPeriodIndex = 0;
-    EEPROM.put(EEPROM_ADDRESS_REC_PERIOD_IDX, 0);
+    _recordingPeriod = 2000;  // ms
+  }
+  else
+  {
+    EEPROM.get(EEPROM_ADDRESS_REC_PERIOD_IDX, _recordingPeriodIndex);
+
+    if (_recordingPeriodIndex < 0 || _recordingPeriodIndex >= REC_PERIOD_ARRAY_LEN)
+    {
+      // Bad value stored in EEPROM, or first time use.
+      _recordingPeriodIndex = 0;
+      EEPROM.put(EEPROM_ADDRESS_REC_PERIOD_IDX, 0);
+    }
+
+    _recordingPeriod = _recordingPeriodMillis[_recordingPeriodIndex];
   }
 }
 
 void DisplayRecordingPeriod()
 {
-  int mins = _recordingPeriodMins[_recordingPeriodIndex];
-  Serial.print("Recording Period: ");
-  Serial.print(mins);
-  Serial.println(mins == 1 ? " minute" : " minutes");
+  if (_debug)
+  {
+    Serial.println("Recording Period: 2 seconds (DEBUG MODE)");
+  }
+  else
+  {
+    int mins = _recordingPeriodMins[_recordingPeriodIndex];
+    Serial.print("Recording Period: ");
+    Serial.print(mins);
+    Serial.println(mins == 1 ? " minute" : " minutes");
+  }
 }
 
 void CheckSdInit(int sdCardIn)
@@ -323,6 +342,11 @@ void UpdateSerial()
 {
   String timestamp = GetTimestamp();
   
+  if (_debug)
+  {
+    Serial.print("DEBUG MODE ");
+  }
+  
   if (_statusReady)
   {
     Serial.print("ERROR: Expected _statusReady would be false, but it is true");
@@ -346,6 +370,11 @@ void UpdateSerial()
 void UpdateSerial(float temperature, float humidity, float pressure)
 {
   String timestamp = GetTimestamp();
+
+  if (_debug)
+  {
+    Serial.print("DEBUG MODE ");
+  }
   
   if (_statusReady)
   {
