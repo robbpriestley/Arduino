@@ -1,17 +1,18 @@
-// https://learn.adafruit.com/adafruit_data_logger_shield/light_and_temperature_logger_use_it
-// https://learn.adafruit.com/adafruit_data_logger_shield/using_the_real_time_clock_2
-// https://cdn-learn.adafruit.com/downloads/pdf/adafruit-data-logger-shield.pdf
-// https://www.arduino.cc/en/tutorial/button 
+// Data Logging Tutorial:    https://learn.adafruit.com/adafruit_data_logger_shield/light_and_temperature_logger_use_it
+// Data Logger Shield Specs: https://cdn-learn.adafruit.com/downloads/pdf/adafruit-data-logger-shield.pdf
+// Realtime Clock (RTC):     https://learn.adafruit.com/adafruit_data_logger_shield/using_the_real_time_clock_2
+// Button Tutorial:          https://www.arduino.cc/en/tutorial/button 
+// DHT Temperature Sensor:   https://learn.adafruit.com/dht
 
-// LED resistors: 2k, Switch pull-down resistors: 10k
+// LED resistors: 2k, Switch pull-down resistors: 10k, DHT pull-up resistor: 10k
 
 #include <SD.h>
 #include <SPI.h>
 #include <EEPROM.h>
+#include "DHT.h"
 #include "RTClib.h"
 
-File _logfile;
-RTC_PCF8523 _rtc;
+#define DHTTYPE DHT22
 
 bool _first;
 bool _flash;
@@ -35,6 +36,7 @@ const int _recordingPeriodMins[REC_PERIOD_ARRAY_LEN] = { 1, 5, 15, 30, 60, 90 };
 const unsigned long _recordingPeriodMillis[REC_PERIOD_ARRAY_LEN] = { 60000, 300000, 900000, 1800000, 3600000, 5400000 };
 
 const int READ_A_PIN_TEMP = 1;
+const int READ_D_PIN_DHT = 2;                 // Pin used to read the DHT22 temperature sensor
 const int READ_D_PIN_BUTTON_DISP_EN = 4;      // Button to turn display on and off
 const int READ_D_PIN_BUTTON_REC_PERIOD = 5;   // Button to change recording period
 const int READ_D_PIN_SD = 10;                 // SD card base access pin
@@ -45,6 +47,10 @@ const int WRITE_D_PIN_ERROR_LED = 6;          // Red LED
 const int EEPROM_ADDRESS_REC_PERIOD_IDX = 0;  // EEPROM Address for Recording Period Index
 const float REFERENCE_VOLTAGE = 5120;         // In mV
 
+File _logfile;
+RTC_PCF8523 _rtc;
+DHT _dht(READ_D_PIN_DHT, DHTTYPE);
+
 void setup() 
 {
   Serial.begin(57600);
@@ -52,6 +58,7 @@ void setup()
     
   PinInit();
   RtcInit();
+  _dht.begin();
 
   _first = true;
   _displayEnabled = true;
@@ -62,8 +69,6 @@ void setup()
 
 void loop() 
 {
-  String timestamp = GetTimestamp();
-
   int sdCardIn = digitalRead(READ_D_PIN_SD_CD);            // Is an SD card inserted?
   int sdCardWriteProtect = digitalRead(READ_D_PIN_SD_WP);  // Is the SD card write protected?
 
@@ -83,16 +88,16 @@ void loop()
 
   if (_statusError)
   {
-    UpdateSerial(timestamp, 0, 0, 0);
+    UpdateSerial();
   }
   else if (_currentMillisRecord - _lastMillisRecord >= _recordingPeriodMillis[_recordingPeriodIndex] || _first)
   {
-    float temperature = TemperatureReading();
-    float humidity = HumidityReading();
-    float pressure = PressureReading();
-    
-    SdCardWrite(timestamp, temperature, humidity, pressure);
-    UpdateSerial(timestamp, temperature, humidity, pressure);
+    float temperature = _dht.readTemperature();
+    float humidity = _dht.readHumidity();
+    float pressure = 0.0;
+
+    SdCardWrite(temperature, humidity, pressure);
+    UpdateSerial(temperature, humidity, pressure);
 
     _lastMillisRecord = _currentMillisRecord;
     _first = false;
@@ -133,8 +138,9 @@ void SdInit()
 
 void PinInit()
 {
+  pinMode(READ_D_PIN_DHT, INPUT);
   pinMode(READ_D_PIN_BUTTON_REC_PERIOD, INPUT);
-  pinMode(READ_D_PIN_SD, OUTPUT);
+  
   pinMode(READ_D_PIN_SD_CD, INPUT_PULLUP);
   pinMode(READ_D_PIN_SD_WP, INPUT_PULLUP);
 
@@ -146,7 +152,7 @@ void RtcInit()
 {
   if (!_rtc.begin())
   {
-    Serial.println("Couldn't find RTC");
+    Serial.println("Could not init RTC");
     while (1);
   }
 
@@ -274,38 +280,17 @@ void UpdateStatusLeds()
   }
 }
 
-String GetTimestamp()
+/*
+  Previously, GetTimestamp() was called once, at the beginning of the loop() function, and the returned value was stored in a local string variable for re-use.
+  However, due to some glitch, if the DHT was accessed after the call to GetTimestamp(), the local string variable value got corrupted and would be populated
+  with non-printable characters. This would look bad at best, and at worst it seemed to cause general havoc such as hanging the Uno or restarting it. So, I
+  decided to only access the RTC immediately prior to using the timestamp value. This seems to have resolved the problem with the glitch.
+*/
+
+void SdCardWrite(float temperature, float humidity, float pressure)
 {
-  DateTime now  = _rtc.now();
-
-  String month  = now.month()  < 10 ? "0" + String(now.month())  : String(now.month());
-  String day    = now.day()    < 10 ? "0" + String(now.day())    : String(now.day());
-  String hour   = now.hour()   < 10 ? "0" + String(now.hour())   : String(now.hour());
-  String minute = now.minute() < 10 ? "0" + String(now.minute()) : String(now.minute());
-  String second = now.second() < 10 ? "0" + String(now.second()) : String(now.second());
-
-  return String(now.year()) + "-" + month + "-" + day + " " + hour + ":" + minute + ":" + second;
-}
-
-float TemperatureReading()
-{
-  // TMP36 https://learn.adafruit.com/tmp36-temperature-sensor
-  int tempReading = analogRead(READ_A_PIN_TEMP);
-  return (tempReading * (REFERENCE_VOLTAGE / 1024) - 500.0) / 10.0;
-}
-
-float HumidityReading()
-{
-  return 0.0;
-}
-
-float PressureReading()
-{
-  return 0.0;
-}
-
-void SdCardWrite(String timestamp, float temperature, float humidity, float pressure)
-{
+  String timestamp = GetTimestamp();
+  
   _logfile.print(timestamp);
   _logfile.print(", ");
   _logfile.print(temperature);
@@ -321,8 +306,47 @@ void SdCardWrite(String timestamp, float temperature, float humidity, float pres
   _lastMillisFlash = _currentMillisFlash;
 }
 
-void UpdateSerial(String timestamp, float temperature, float humidity, float pressure)
+String GetTimestamp()
 {
+  DateTime now  = _rtc.now();
+
+  String month  = now.month()  < 10 ? "0" + String(now.month())  : String(now.month());
+  String day    = now.day()    < 10 ? "0" + String(now.day())    : String(now.day());
+  String hour   = now.hour()   < 10 ? "0" + String(now.hour())   : String(now.hour());
+  String minute = now.minute() < 10 ? "0" + String(now.minute()) : String(now.minute());
+  String second = now.second() < 10 ? "0" + String(now.second()) : String(now.second());
+
+  return String(now.year()) + "-" + month + "-" + day + " " + hour + ":" + minute + ":" + second;
+}
+
+void UpdateSerial()
+{
+  String timestamp = GetTimestamp();
+  
+  if (_statusReady)
+  {
+    Serial.print("ERROR: Expected _statusReady would be false, but it is true");
+    Serial.println();
+  }
+  else if (_statusError)
+  {
+    Serial.print(timestamp);
+    Serial.print(" ERROR: ");
+    Serial.print(_errorMessage);
+    Serial.println();
+  }
+  else
+  {
+    Serial.print(timestamp);
+    Serial.print(" UNKNOWN STATUS");
+    Serial.println();
+  }
+}
+
+void UpdateSerial(float temperature, float humidity, float pressure)
+{
+  String timestamp = GetTimestamp();
+  
   if (_statusReady)
   {
     Serial.print(timestamp);
@@ -330,8 +354,9 @@ void UpdateSerial(String timestamp, float temperature, float humidity, float pre
     Serial.print(temperature);
     Serial.print(" °C, ");
     Serial.print(humidity);
-    Serial.print(", ");
+    Serial.print(" %, ");
     Serial.print(pressure);
+    Serial.print(" hPa");
     Serial.println();
   }
   else if (_statusError)
