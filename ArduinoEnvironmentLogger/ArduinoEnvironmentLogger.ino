@@ -29,6 +29,11 @@ bool _displayEnabled;
 bool _buttonDisplayEnabled;
 bool _buttonRecordingPeriod;
 
+char _zero = '0';
+char _year[4] = {0};
+char _digit[2] = {0};
+char _timestamp[20] = {0};
+
 int _errorCode = 0;
 int _periodFlash = 333;
 
@@ -64,10 +69,10 @@ const char* C_STARS = "***";
 const char C_COMMA = ',';
 const char C_SPACE = ' ';
 
-File _logfile;
-RTC_PCF8523 _rtc;
-Adafruit_BMP3XX _bmp;
-DHT _dht(READ_D_PIN_DHT, DHTTYPE);
+File _logfile;                      // SD card logfile
+RTC_PCF8523 _rtc;                   // Realtime clock
+Adafruit_BMP3XX _bmp;               // Pressure sensor
+DHT _dht(READ_D_PIN_DHT, DHTTYPE);  // Temperature/humidity sensor
 
 /*
   ERROR CODES:
@@ -95,6 +100,7 @@ void setup()
   PinInit();
   RtcInit();
   BmpInit();
+  CharInit();
   _dht.begin();
 
   _first = true;
@@ -224,6 +230,20 @@ void BmpInit()
   }
 }
 
+void CharInit()
+{
+  _digit[0] = 'X';
+  _digit[1] = 'X';
+
+  memset(_timestamp, 0x00, 20);
+  
+  _timestamp[4] = '-';
+  _timestamp[7] = '-';
+  _timestamp[10] = ' ';
+  _timestamp[13] = ':';
+  _timestamp[16] = ':';
+}
+
 void SetRecordingPeriodIndex()
 {
   if (_debug)
@@ -247,11 +267,7 @@ void SetRecordingPeriodIndex()
 
 void DisplayRecordingPeriod()
 {
-  if (_debug)
-  {
-    Serial.println(C_DEBUG_MODE);
-  }
-  else
+  if (!_debug)
   {
     int mins = _recordingPeriodMins[_recordingPeriodIndex];
     Serial.print(C_REC_PERIOD);
@@ -377,6 +393,43 @@ float ReadPressure()
   return _bmp.pressure / 100.0;
 }
 
+void UpdateTimestamp()
+{
+  DateTime now  = _rtc.now();
+
+  itoa(now.year(), _year, 10);
+
+  _timestamp[0] = _year[0];
+  _timestamp[1] = _year[1];
+  _timestamp[2] = _year[2];
+  _timestamp[3] = _year[3];
+  
+  RecordTimestampComponent(now.month(), 5);
+  RecordTimestampComponent(now.day(), 8);
+  RecordTimestampComponent(now.hour(), 11);
+  RecordTimestampComponent(now.minute(), 14);
+  RecordTimestampComponent(now.second(), 17);
+}
+
+void RecordTimestampComponent(int digit, int i)
+{
+  _digit[0] = '0';
+  _digit[1] = '0';
+  
+  itoa(digit, _digit, 10);
+
+  if (digit < 10)
+  {
+    _timestamp[i]     = _zero;
+    _timestamp[i + 1] = _digit[0];
+  }
+  else
+  {
+    _timestamp[i]     = _digit[0];
+    _timestamp[i + 1] = _digit[1];
+  }
+}
+
 /*
   Previously, GetTimestamp() was called once, at the beginning of the loop() function, and the returned value was stored in a local string variable for re-use.
   However, due to some glitch, if the DHT was accessed after the call to GetTimestamp(), the local string variable value got corrupted and would be populated
@@ -386,9 +439,9 @@ float ReadPressure()
 
 void SdCardWrite(float temperature, float humidity, float pressure)
 {
-  String timestamp = GetTimestamp();
+  UpdateTimestamp();
   
-  _logfile.print(timestamp);
+  _logfile.print(_timestamp);
   _logfile.print(C_COMMA);
   _logfile.print(temperature);
   _logfile.print(C_COMMA);
@@ -403,22 +456,9 @@ void SdCardWrite(float temperature, float humidity, float pressure)
   _lastMillisFlash = _currentMillisFlash;
 }
 
-String GetTimestamp()
-{
-  DateTime now  = _rtc.now();
-
-  String month  = now.month()  < 10 ? "0" + String(now.month())  : String(now.month());
-  String day    = now.day()    < 10 ? "0" + String(now.day())    : String(now.day());
-  String hour   = now.hour()   < 10 ? "0" + String(now.hour())   : String(now.hour());
-  String minute = now.minute() < 10 ? "0" + String(now.minute()) : String(now.minute());
-  String second = now.second() < 10 ? "0" + String(now.second()) : String(now.second());
-
-  return String(now.year()) + "-" + month + "-" + day + " " + hour + ":" + minute + ":" + second;
-}
-
 void UpdateSerial()
 {
-  String timestamp = GetTimestamp();
+  UpdateTimestamp();
   
   if (_debug)
   {
@@ -430,7 +470,7 @@ void UpdateSerial()
     _errorCode = 7;
   }
 
-  Serial.print(timestamp);
+  Serial.print(_timestamp);
   Serial.print(C_SPACE);
   Serial.print(C_ERROR);
   Serial.print(C_SPACE);
@@ -439,7 +479,7 @@ void UpdateSerial()
 
 void UpdateSerial(float temperature, float humidity, float pressure)
 {
-  String timestamp = GetTimestamp();
+  UpdateTimestamp();
 
   if (_debug)
   {
@@ -449,7 +489,7 @@ void UpdateSerial(float temperature, float humidity, float pressure)
   
   if (_statusReady)
   {
-    Serial.print(timestamp);
+    Serial.print(_timestamp);
     Serial.print(C_COMMA);
     Serial.print(temperature);
     Serial.print(C_COMMA);
@@ -459,7 +499,7 @@ void UpdateSerial(float temperature, float humidity, float pressure)
   }
   else if (_statusError)
   {
-    Serial.print(timestamp);
+    Serial.print(_timestamp);
     Serial.print(C_SPACE);
     Serial.print(C_ERROR);
     Serial.print(C_SPACE);
@@ -468,7 +508,7 @@ void UpdateSerial(float temperature, float humidity, float pressure)
   else
   {
     _errorCode = 8;
-    Serial.print(timestamp);
+    Serial.print(_timestamp);
     Serial.print(C_SPACE);
     Serial.print(C_ERROR);
     Serial.print(C_SPACE);
