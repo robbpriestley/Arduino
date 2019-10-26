@@ -120,7 +120,7 @@ void setup()
   _dht.begin();
 
   _first = true;
-  _debug = true;
+  _debug = false;
   _displayEnabled = true;
 
   SetRecordingPeriodIndex();
@@ -140,7 +140,7 @@ void loop()
 
   _currentMillisFlash = millis();
   _currentMillisRecord = millis();
-  //RecPeriodRemaining();
+  RecPeriodRemaining();
 
   if (_currentMillisFlash - _lastMillisFlash >= _periodFlash)
   {
@@ -397,9 +397,7 @@ void UpdateStatusLeds()
 
 void RecPeriodRemaining()
 {
-  
-  
-  unsigned long recordingPeriodRemaining = _recordingPeriod - _currentMillisRecord - _lastMillisRecord;
+  unsigned long recordingPeriodRemaining = _recordingPeriod - (_currentMillisRecord - _lastMillisRecord);
 
   if (recordingPeriodRemaining / 1000 != _recordingPeriodRemaining / 1000)
   {
