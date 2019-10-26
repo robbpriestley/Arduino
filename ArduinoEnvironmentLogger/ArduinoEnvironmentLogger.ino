@@ -42,11 +42,14 @@ unsigned long _currentMillisFlash = 0;
 unsigned long _lastMillisRecord = 0;
 unsigned long _currentMillisRecord = 0;
 
-int _recordingPeriod;
+unsigned long _recordingPeriod;
+unsigned long _recordingPeriodRemaining;
+unsigned long _debugRecordingPeriod = 2000;
+
 int _recordingPeriodIndex = 0;
 const int REC_PERIOD_ARRAY_LEN = 6;
 const int _recordingPeriodMins[REC_PERIOD_ARRAY_LEN] = { 1, 5, 15, 30, 60, 90 };
-const int _recordingPeriodMillis[REC_PERIOD_ARRAY_LEN] = { 60000, 300000, 900000, 1800000, 3600000, 5400000 };
+const unsigned long _recordingPeriodMillis[REC_PERIOD_ARRAY_LEN] = { 60000, 300000, 900000, 1800000, 3600000, 5400000 };
 
 const int READ_A_PIN_TEMP = 1;
 const int READ_D_PIN_DHT = 2;                 // Pin used to read the DHT22 temperature sensor
@@ -84,7 +87,8 @@ DHT _dht(READ_D_PIN_DHT, DHTTYPE);  // Temperature/humidity sensor
   5: SD card is write protected
   6: Log file error
   7: Unknown status
-  8: BMP read error
+  8: BMP init error
+  9: BMP read error
  */
 
 // https://arduino.stackexchange.com/a/39127
@@ -136,6 +140,7 @@ void loop()
 
   _currentMillisFlash = millis();
   _currentMillisRecord = millis();
+  //RecPeriodRemaining();
 
   if (_currentMillisFlash - _lastMillisFlash >= _periodFlash)
   {
@@ -219,7 +224,7 @@ void RtcInit()
 void BmpInit()
 {
   if (!_bmp.begin()) {
-    _errorCode = 9;
+    _errorCode = 8;
     Serial.print(C_ERROR);
     Serial.print(C_SPACE);
     Serial.println(_errorCode);
@@ -259,7 +264,7 @@ void SetRecordingPeriodIndex()
 {
   if (_debug)
   {
-    _recordingPeriod = 2000;  // ms
+    _recordingPeriod = _debugRecordingPeriod;
   }
   else
   {
@@ -387,6 +392,19 @@ void UpdateStatusLeds()
     
     digitalWrite(WRITE_D_PIN_READY_LED, statusReadyWrite);
     digitalWrite(WRITE_D_PIN_ERROR_LED, statusErrorWrite);
+  }
+}
+
+void RecPeriodRemaining()
+{
+  
+  
+  unsigned long recordingPeriodRemaining = _recordingPeriod - _currentMillisRecord - _lastMillisRecord;
+
+  if (recordingPeriodRemaining / 1000 != _recordingPeriodRemaining / 1000)
+  {
+    _recordingPeriodRemaining = recordingPeriodRemaining;
+    Serial.println(_recordingPeriodRemaining / 1000); 
   }
 }
 
