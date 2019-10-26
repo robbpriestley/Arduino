@@ -87,6 +87,17 @@ DHT _dht(READ_D_PIN_DHT, DHTTYPE);  // Temperature/humidity sensor
   8: BMP read error
  */
 
+void DateTimeCb(uint16_t* date, uint16_t* time)
+{
+   DateTime now = _rtc.now();
+   
+   // return date using FAT_DATE macro to format fields
+   *date = FAT_DATE(now.year(), now.month(), now.day());
+  
+   // return time using FAT_TIME macro to format fields
+   *time = FAT_TIME(now.hour(), now.minute(), now.second());
+}
+
 void setup() 
 {
   Serial.begin(57600);
@@ -157,8 +168,6 @@ void SdInit()
     return;
   }
 
-  // Create a new file.
-  
   char filename[] = "LOGGER00.CSV";
   
   for (uint8_t i = 0; i < 100; i++)
@@ -168,6 +177,7 @@ void SdInit()
     
     if (!SD.exists(filename))
     {
+      SdFile::dateTimeCallback(DateTimeCb);
       _logfile = SD.open(filename, FILE_WRITE);  // Only open a new file if it doesn't exist.
       break;
     }
