@@ -87,6 +87,7 @@ DHT _dht(READ_D_PIN_DHT, DHTTYPE);  // Temperature/humidity sensor
   8: BMP read error
  */
 
+// https://arduino.stackexchange.com/a/39127
 void DateTimeCb(uint16_t* date, uint16_t* time)
 {
    DateTime now = _rtc.now();
@@ -102,12 +103,8 @@ void setup()
 {
   Serial.begin(57600);
   
-  Serial.print(C_STARS);
-  Serial.print(C_SPACE);
-  Serial.print(C_STARTUP_MESSAGE);
-  Serial.print(C_SPACE);
-  Serial.println(C_STARS);
-    
+  Greeting();
+
   PinInit();
   RtcInit();
   BmpInit();
@@ -157,6 +154,15 @@ void loop()
     _lastMillisRecord = _currentMillisRecord;
     _first = false;
   }
+}
+
+void Greeting()
+{
+  Serial.print(C_STARS);
+  Serial.print(C_SPACE);
+  Serial.print(C_STARTUP_MESSAGE);
+  Serial.print(C_SPACE);
+  Serial.println(C_STARS);
 }
 
 void SdInit()
