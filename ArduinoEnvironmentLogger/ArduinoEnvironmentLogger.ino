@@ -26,8 +26,8 @@ bool _debug;
 bool _statusReady;
 bool _statusError;
 bool _displayEnabled;
+bool _buttonRecPeriod;
 bool _buttonDisplayEnabled;
-bool _buttonRecordingPeriod;
 
 char _zero = '0';
 char _year[4] = {0};
@@ -37,19 +37,19 @@ char _timestamp[20] = {0};
 int _errorCode = 0;
 int _periodFlash = 333;
 
+unsigned long _lastMillisRec = 0;
+unsigned long _currentMillisRec = 0;
 unsigned long _lastMillisFlash = 0;
 unsigned long _currentMillisFlash = 0;
-unsigned long _lastMillisRecord = 0;
-unsigned long _currentMillisRecord = 0;
 
-unsigned long _recordingPeriod;
-unsigned long _recordingPeriodRemaining;
-unsigned long _debugRecordingPeriod = 2000;
+unsigned long _recPeriod;
+unsigned long _recPeriodRemaining;
+unsigned long _debugRecPeriod = 2000;
 
-int _recordingPeriodIndex = 0;
+int _recPeriodIndex = 0;
 const int REC_PERIOD_ARRAY_LEN = 6;
-const int _recordingPeriodMins[REC_PERIOD_ARRAY_LEN] = { 1, 5, 15, 30, 60, 90 };
-const unsigned long _recordingPeriodMillis[REC_PERIOD_ARRAY_LEN] = { 60000, 300000, 900000, 1800000, 3600000, 5400000 };
+const int _recPeriodMins[REC_PERIOD_ARRAY_LEN] = { 1, 5, 15, 30, 60, 90 };
+const unsigned long _recPeriodMillis[REC_PERIOD_ARRAY_LEN] = { 60000, 300000, 900000, 1800000, 3600000, 5400000 };
 
 const int READ_A_PIN_TEMP = 1;
 const int READ_D_PIN_DHT = 2;                 // Pin used to read the DHT22 temperature sensor
@@ -123,8 +123,8 @@ void setup()
   _debug = false;
   _displayEnabled = true;
 
-  SetRecordingPeriodIndex();
-  DisplayRecordingPeriod();
+  SetRecPeriodIndex();
+  DisplayRecPeriod();
 }
 
 void loop() 
@@ -139,7 +139,7 @@ void loop()
   UpdateStatusLeds();
 
   _currentMillisFlash = millis();
-  _currentMillisRecord = millis();
+  _currentMillisRec = millis();
   RecPeriodRemaining();
 
   if (_currentMillisFlash - _lastMillisFlash >= _periodFlash)
@@ -151,7 +151,7 @@ void loop()
   {
     UpdateSerial();
   }
-  else if (_currentMillisRecord - _lastMillisRecord >= _recordingPeriod || _first)
+  else if (_currentMillisRec - _lastMillisRec >= _recPeriod || _first)
   {
     float temperature = _dht.readTemperature();
     float humidity = _dht.readHumidity();
@@ -160,7 +160,7 @@ void loop()
     SdCardWrite(temperature, humidity, pressure);
     UpdateSerial(temperature, humidity, pressure);
 
-    _lastMillisRecord = _currentMillisRecord;
+    _lastMillisRec = _currentMillisRec;
     _first = false;
   }
 }
@@ -260,32 +260,32 @@ void CharInit()
   _timestamp[16] = ':';
 }
 
-void SetRecordingPeriodIndex()
+void SetRecPeriodIndex()
 {
   if (_debug)
   {
-    _recordingPeriod = _debugRecordingPeriod;
+    _recPeriod = _debugRecPeriod;
   }
   else
   {
-    EEPROM.get(EEPROM_ADDRESS_REC_PERIOD_IDX, _recordingPeriodIndex);
+    EEPROM.get(EEPROM_ADDRESS_REC_PERIOD_IDX, _recPeriodIndex);
 
-    if (_recordingPeriodIndex < 0 || _recordingPeriodIndex >= REC_PERIOD_ARRAY_LEN)
+    if (_recPeriodIndex < 0 || _recPeriodIndex >= REC_PERIOD_ARRAY_LEN)
     {
       // Bad value stored in EEPROM, or first time use.
-      _recordingPeriodIndex = 0;
+      _recPeriodIndex = 0;
       EEPROM.put(EEPROM_ADDRESS_REC_PERIOD_IDX, 0);
     }
 
-    _recordingPeriod = _recordingPeriodMillis[_recordingPeriodIndex];
+    _recPeriod = _recPeriodMillis[_recPeriodIndex];
   }
 }
 
-void DisplayRecordingPeriod()
+void DisplayRecPeriod()
 {
   if (!_debug)
   {
-    int mins = _recordingPeriodMins[_recordingPeriodIndex];
+    int mins = _recPeriodMins[_recPeriodIndex];
     Serial.print(C_REC_PERIOD);
     Serial.print(C_SPACE);
     Serial.println(mins);
@@ -344,19 +344,19 @@ void ButtonStatus()
 {
   // Button Recording Period
   
-  int buttonRecordingPeriodState = digitalRead(READ_D_PIN_BUTTON_REC_PERIOD);
+  int buttonRecPeriodState = digitalRead(READ_D_PIN_BUTTON_REC_PERIOD);
 
-  if (buttonRecordingPeriodState == HIGH)
+  if (buttonRecPeriodState == HIGH)
   {
-    _buttonRecordingPeriod = true;
+    _buttonRecPeriod = true;
   }
-  else if (_buttonRecordingPeriod)
+  else if (_buttonRecPeriod)
   {
     _first = true;
-    _buttonRecordingPeriod = false;
-    _recordingPeriodIndex = _recordingPeriodIndex == REC_PERIOD_ARRAY_LEN - 1 ? 0 : _recordingPeriodIndex + 1;
-    EEPROM.put(EEPROM_ADDRESS_REC_PERIOD_IDX, _recordingPeriodIndex);
-    DisplayRecordingPeriod();
+    _buttonRecPeriod = false;
+    _recPeriodIndex = _recPeriodIndex == REC_PERIOD_ARRAY_LEN - 1 ? 0 : _recPeriodIndex + 1;
+    EEPROM.put(EEPROM_ADDRESS_REC_PERIOD_IDX, _recPeriodIndex);
+    DisplayRecPeriod();
   }
 
   // Button Display Enabled
@@ -397,12 +397,12 @@ void UpdateStatusLeds()
 
 void RecPeriodRemaining()
 {
-  unsigned long recordingPeriodRemaining = _recordingPeriod - (_currentMillisRecord - _lastMillisRecord);
+  unsigned long recPeriodRemaining = _recPeriod - (_currentMillisRec - _lastMillisRec);
 
-  if (recordingPeriodRemaining / 1000 != _recordingPeriodRemaining / 1000)
+  if (recPeriodRemaining / 1000 != _recPeriodRemaining / 1000)
   {
-    _recordingPeriodRemaining = recordingPeriodRemaining;
-    Serial.println(_recordingPeriodRemaining / 1000); 
+    _recPeriodRemaining = recPeriodRemaining;
+    Serial.println(_recPeriodRemaining / 1000); 
   }
 }
 
@@ -431,14 +431,14 @@ void UpdateTimestamp()
   _timestamp[2] = _year[2];
   _timestamp[3] = _year[3];
   
-  RecordTimestampComponent(now.month(), 5);
-  RecordTimestampComponent(now.day(), 8);
-  RecordTimestampComponent(now.hour(), 11);
-  RecordTimestampComponent(now.minute(), 14);
-  RecordTimestampComponent(now.second(), 17);
+  ModifyTimestampComponent(now.month(), 5);
+  ModifyTimestampComponent(now.day(), 8);
+  ModifyTimestampComponent(now.hour(), 11);
+  ModifyTimestampComponent(now.minute(), 14);
+  ModifyTimestampComponent(now.second(), 17);
 }
 
-void RecordTimestampComponent(int digit, int i)
+void ModifyTimestampComponent(int digit, int i)
 {
   _digit[0] = '0';
   _digit[1] = '0';
