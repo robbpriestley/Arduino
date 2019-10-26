@@ -103,8 +103,12 @@ void setup()
 {
   Serial.begin(57600);
   
-  Greeting();
-
+  Serial.print(C_STARS);
+  Serial.print(C_SPACE);
+  Serial.print(C_STARTUP_MESSAGE);
+  Serial.print(C_SPACE);
+  Serial.println(C_STARS);
+    
   PinInit();
   RtcInit();
   BmpInit();
@@ -112,7 +116,7 @@ void setup()
   _dht.begin();
 
   _first = true;
-  _debug = false;
+  _debug = true;
   _displayEnabled = true;
 
   SetRecordingPeriodIndex();
@@ -154,15 +158,6 @@ void loop()
     _lastMillisRecord = _currentMillisRecord;
     _first = false;
   }
-}
-
-void Greeting()
-{
-  Serial.print(C_STARS);
-  Serial.print(C_SPACE);
-  Serial.print(C_STARTUP_MESSAGE);
-  Serial.print(C_SPACE);
-  Serial.println(C_STARS);
 }
 
 void SdInit()
