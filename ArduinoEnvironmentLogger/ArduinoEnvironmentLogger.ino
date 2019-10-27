@@ -10,6 +10,20 @@
 
 // LED resistors: 2k, Switch pull-down resistors: 10k, DHT pull-up resistor: 10k
 
+/*
+  ERROR CODES:
+  0: No error
+  1: SD card failed, or not present
+  2: Could not init RTC
+  3: RTC is not running
+  4: SD card is not inserted
+  5: SD card is write protected
+  6: Log file error
+  7: Unknown status
+  8: BMP init error
+  9: BMP read error
+ */
+
 #include <SD.h>
 #include <SPI.h>
 #include <EEPROM.h>
@@ -77,20 +91,6 @@ RTC_PCF8523 _rtc;                   // Realtime clock
 Adafruit_BMP3XX _bmp;               // Pressure sensor
 DHT _dht(READ_D_PIN_DHT, DHTTYPE);  // Temperature/humidity sensor
 
-/*
-  ERROR CODES:
-  0: No error
-  1: SD card failed, or not present
-  2: Could not init RTC
-  3: RTC is not running
-  4: SD card is not inserted
-  5: SD card is write protected
-  6: Log file error
-  7: Unknown status
-  8: BMP init error
-  9: BMP read error
- */
-
 // https://arduino.stackexchange.com/a/39127
 void DateTimeCb(uint16_t* date, uint16_t* time)
 {
@@ -120,7 +120,7 @@ void setup()
   _dht.begin();
 
   _first = true;
-  _debug = false;
+  _debug = true;
   _displayEnabled = true;
 
   SetRecPeriodIndex();
