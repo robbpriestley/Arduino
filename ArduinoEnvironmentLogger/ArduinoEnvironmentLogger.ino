@@ -215,6 +215,7 @@ void RtcInit()
     Serial.print(C_ERROR);
     Serial.print(C_SPACE);
     Serial.println(_errorCode);
+    digitalWrite(WRITE_D_PIN_ERROR_LED, HIGH);
     while (1);
   }
 
@@ -228,6 +229,7 @@ void BmpInit()
     Serial.print(C_ERROR);
     Serial.print(C_SPACE);
     Serial.println(_errorCode);
+    digitalWrite(WRITE_D_PIN_ERROR_LED, HIGH);
     while (1);
   }
 
