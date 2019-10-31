@@ -1,56 +1,97 @@
-// https://learn.adafruit.com/adafruit_data_logger_shield/light_and_temperature_logger_use_it
-// https://learn.adafruit.com/adafruit_data_logger_shield/using_the_real_time_clock_2
-// https://cdn-learn.adafruit.com/downloads/pdf/adafruit-data-logger-shield.pdf
-// https://www.arduino.cc/en/tutorial/button 
-// LED resistors: 2k, Switch pull-down resistors: 10k
+// *** DATA LOGGER ***
+
+// Code duplicated from:     https://github.com/robbpriestley/Arduino/blob/master/ArduinoDataLogger/ArduinoDataLogger.ino
+
+// Data Logging Tutorial:    https://learn.adafruit.com/adafruit_data_logger_shield/light_and_temperature_logger_use_it
+// Data Logger Shield Specs: https://cdn-learn.adafruit.com/downloads/pdf/adafruit-data-logger-shield.pdf
+// Realtime Clock (RTC):     https://learn.adafruit.com/adafruit_data_logger_shield/using_the_real_time_clock_2
+
+/*
+  ERROR CODES:
+  0: No error
+  1: SD card failed, or not present
+  2: Could not init RTC
+  3: RTC is not running
+  4: SD card is not inserted
+  5: SD card is write protected
+  6: Log file error
+  7: Unknown status
+ */
 
 #include <SD.h>
 #include <SPI.h>
 #include "RTClib.h"
 
-File _logfile;
-RTC_PCF8523 _rtc;
-
 bool _first;
-bool _flash;
 bool _statusReady;
 bool _statusError;
-bool _buttonRecordingPeriod;
+bool _flashSdWrite;
+bool _flashActivity;
 
-String _errorMessage;
-int _periodFlash = 333;
+char _zero = '0';
+char _year[4] = {0};
+char _digit[2] = {0};
+char _timestamp[20] = {0};
 
-unsigned long _lastMillisFlash = 0;
-unsigned long _currentMillisFlash = 0;
-unsigned long _lastMillisRecord = 0;
-unsigned long _currentMillisRecord = 0;
+int _errorCode = 0;
+int _periodFlashSdWrite = 333;
+int _periodFlashActivity = 55;
 
-const int _recordingPeriod = 1500; // in milliseconds
+unsigned long _lastMillisRec = 0;
+unsigned long _currentMillisRec = 0;
+unsigned long _lastMillisFlashSdWrite = 0;
+unsigned long _currentMillisFlashSdWrite = 0;
+unsigned long _lastMillisFlashActivity = 0;
+unsigned long _currentMillisFlashActivity = 0;
 
-const int READ_D_PIN_SD = 10;          // SD card base access pin
-const int READ_D_PIN_SD_CD = 9;        // SD card CD pin indicates if card is inserted
-const int READ_D_PIN_SD_WP = 8;        // SD card WP pin indicates if card is write protected
-const int WRITE_D_PIN_READY_LED = 7;   // Green LED
-const int WRITE_D_PIN_ERROR_LED = 6;   // Red LED
-const float REFERENCE_VOLTAGE = 5120;  // In mV
+unsigned long _recPeriod = 5000;    // *** RECORDING PERIOD in milliseconds ***
+unsigned long _recPeriodRemaining;
+
+const char* C_STARTUP_MESSAGE = "DATA LOGGER";
+const char* C_REC_PERIOD = "REC PERIOD";
+const char* C_ERROR = "ERROR";
+const char* C_STARS = "***";
+const char C_COMMA = ',';
+const char C_SPACE = ' ';
+
+// ANALOG PINS
+
+// None
+
+// DIGITAL PINS
+
+const int WRITE_D_PIN_RED_LED   = 6;   // Red LED
+const int WRITE_D_PIN_GREEN_LED = 7;   // Green LED
+const int READ_D_PIN_SD_WP      = 8;   // SD card WP pin indicates if card is write protected
+const int READ_D_PIN_SD_CD      = 9;   // SD card CD pin indicates if card is inserted
+const int READ_D_PIN_SD         = 10;  // SD card base access pin
+
+// OBJECTS
+
+File _logfile;     // SD card logfile
+RTC_PCF8523 _rtc;  // Realtime clock
 
 void setup() 
 {
   Serial.begin(57600);
-  Serial.println("*** ARDUINO LOGGER ***");
+  
+  Serial.print(C_STARS);
+  Serial.print(C_SPACE);
+  Serial.print(C_STARTUP_MESSAGE);
+  Serial.print(C_SPACE);
+  Serial.println(C_STARS);
     
   PinInit();
   RtcInit();
+  CharInit();
 
   _first = true;
 
-  DisplayRecordingPeriod();
+  DisplayRecPeriod();
 }
 
 void loop() 
 {
-  String timestamp = GetTimestamp();
-
   int sdCardIn = digitalRead(READ_D_PIN_SD_CD);            // Is an SD card inserted?
   int sdCardWriteProtect = digitalRead(READ_D_PIN_SD_WP);  // Is the SD card write protected?
 
@@ -59,37 +100,35 @@ void loop()
   DetermineStatusReady(sdCardIn, sdCardWriteProtect);
   UpdateStatusLeds();
 
-  _currentMillisFlash = millis();
-  _currentMillisRecord = millis();
+  _currentMillisRec = millis();
+  _currentMillisFlashSdWrite = millis();
+  _currentMillisFlashActivity = millis();
+  RecPeriodRemaining();
 
-  if (_currentMillisFlash - _lastMillisFlash >= _periodFlash)
+  if (_currentMillisFlashSdWrite - _lastMillisFlashSdWrite >= _periodFlashSdWrite)
   {
-    _flash = false;
+    _flashSdWrite = false;
+  }
+
+  if (_currentMillisFlashActivity - _lastMillisFlashActivity >= _periodFlashActivity)
+  {
+    _flashActivity = false;
   }
 
   if (_statusError)
   {
-    UpdateSerial(timestamp, 0.0);
+    UpdateSerial();
   }
-  else if (_currentMillisRecord - _lastMillisRecord >= _recordingPeriod || _first)
+  else if (_currentMillisRec - _lastMillisRec >= _recPeriod || _first)
   {
-    float value = GetValue();
-    
-    SdCardWrite(timestamp, value);
-    UpdateSerial(timestamp, value);
+    float value = 0.0;
 
-    _lastMillisRecord = _currentMillisRecord;
+    SdCardWrite(value);
+    UpdateSerial(value);
+
+    _lastMillisRec = _currentMillisRec;
     _first = false;
   }
-}
-
-float GetValue()
-{
-  // DO SOMETHING TO GET A READING FROM SOMEWHERE OR A VALUE FROM A SENSOR
-
-  float value = 1.0;  // 1.0 == dummy value
-  
-  return value;
 }
 
 void SdInit()
@@ -97,12 +136,10 @@ void SdInit()
   if (!SD.begin(READ_D_PIN_SD))
   {
     _statusError = true;
-    _errorMessage = "SD card failed, or not present";
+    _errorCode = 1;
     return;
   }
 
-  // Create a new file.
-  
   char filename[] = "LOGGER00.CSV";
   
   for (uint8_t i = 0; i < 100; i++)
@@ -119,37 +156,53 @@ void SdInit()
   
   if (_logfile)
   {
-    Serial.print("Logging to: ");
     Serial.println(filename);
   }
 }
 
 void PinInit()
 {
-  pinMode(READ_D_PIN_SD, OUTPUT);
   pinMode(READ_D_PIN_SD_CD, INPUT_PULLUP);
   pinMode(READ_D_PIN_SD_WP, INPUT_PULLUP);
 
-  pinMode(WRITE_D_PIN_READY_LED, OUTPUT);
-  pinMode(WRITE_D_PIN_ERROR_LED, OUTPUT);
+  pinMode(WRITE_D_PIN_GREEN_LED, OUTPUT);
+  pinMode(WRITE_D_PIN_RED_LED, OUTPUT);
 }
 
 void RtcInit()
 {
   if (!_rtc.begin())
   {
-    Serial.println("Couldn't find RTC");
+    _errorCode = 2;
+    Serial.print(C_ERROR);
+    Serial.print(C_SPACE);
+    Serial.println(_errorCode);
+    digitalWrite(WRITE_D_PIN_RED_LED, HIGH);
     while (1);
   }
 
-  // _rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));  // Uncomment to set date and time.
+  _rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));  // Uncomment to set date and time.
 }
 
-void DisplayRecordingPeriod()
+void CharInit()
 {
-  Serial.print("Recording Period: ");
-  Serial.print(_recordingPeriod);
-  Serial.println(_recordingPeriod == 1 ? " milliseconds" : " milliseconds");
+  _digit[0] = 'X';
+  _digit[1] = 'X';
+
+  memset(_timestamp, 0x00, 20);
+  
+  _timestamp[4] = '-';
+  _timestamp[7] = '-';
+  _timestamp[10] = ' ';
+  _timestamp[13] = ':';
+  _timestamp[16] = ':';
+}
+
+void DisplayRecPeriod()
+{
+  Serial.print(C_REC_PERIOD);
+  Serial.print(C_SPACE);
+  Serial.println(_recPeriod);
 }
 
 void CheckSdInit(int sdCardIn)
@@ -165,7 +218,7 @@ void DetermineStatusError(int sdCardIn, int sdCardWriteProtect)
   if (!_rtc.initialized())
   {
     _statusError = true;
-    _errorMessage = "RTC is not running.";
+    _errorCode = 3;
   }
   else if (sdCardIn == HIGH)  // CD and WP pins are open drain and normal LOW/HIGH logic is reversed.
   {
@@ -175,22 +228,22 @@ void DetermineStatusError(int sdCardIn, int sdCardWriteProtect)
     }
     
     _statusError = true;
-    _errorMessage = "SD card is not inserted.";
+    _errorCode = 4;
   }
   else if (sdCardIn == LOW && sdCardWriteProtect == HIGH)  // CD and WP pins are open drain and normal LOW/HIGH logic is reversed.
   {
     _statusError = true;
-    _errorMessage = "SD card is write protected.";
+    _errorCode = 5;
   }
   else if (!_logfile)
   {
     _statusError = true;
-    _errorMessage = "Log file error.";
+    _errorCode = 6;
   }
   else  // No error.
   {
     _statusError = false;
-    _errorMessage = "";
+    _errorCode = 0;
   }
 }
 
@@ -202,58 +255,121 @@ void DetermineStatusReady(int sdCardIn, int sdCardWriteProtect)
 
 void UpdateStatusLeds()
 {
-  int statusReadyWrite = _statusReady && !_flash ? HIGH : LOW;
-  int statusErrorWrite = _statusError ? HIGH : LOW;
+  int green = _statusReady && !_flashActivity ? HIGH : LOW;
+  int red = _statusError || _flashSdWrite ? HIGH : LOW;
   
-  digitalWrite(WRITE_D_PIN_READY_LED, statusReadyWrite);
-  digitalWrite(WRITE_D_PIN_ERROR_LED, statusErrorWrite);
+  digitalWrite(WRITE_D_PIN_GREEN_LED, green);
+  digitalWrite(WRITE_D_PIN_RED_LED, red);
 }
 
-String GetTimestamp()
+void RecPeriodRemaining()
+{
+  unsigned long recPeriodRemaining = _recPeriod - (_currentMillisRec - _lastMillisRec);
+
+  if (recPeriodRemaining / 1000 != _recPeriodRemaining / 1000)
+  {
+    _flashActivity = true;
+    _lastMillisFlashActivity = _currentMillisFlashActivity;
+    
+    _recPeriodRemaining = recPeriodRemaining;
+    Serial.println(_recPeriodRemaining / 1000); 
+  }
+}
+
+void UpdateTimestamp()
 {
   DateTime now  = _rtc.now();
 
-  String month  = now.month()  < 10 ? "0" + String(now.month())  : String(now.month());
-  String day    = now.day()    < 10 ? "0" + String(now.day())    : String(now.day());
-  String hour   = now.hour()   < 10 ? "0" + String(now.hour())   : String(now.hour());
-  String minute = now.minute() < 10 ? "0" + String(now.minute()) : String(now.minute());
-  String second = now.second() < 10 ? "0" + String(now.second()) : String(now.second());
+  itoa(now.year(), _year, 10);
 
-  return String(now.year()) + "-" + month + "-" + day + " " + hour + ":" + minute + ":" + second;
+  _timestamp[0] = _year[0];
+  _timestamp[1] = _year[1];
+  _timestamp[2] = _year[2];
+  _timestamp[3] = _year[3];
+  
+  ModifyTimestampComponent(now.month(), 5);
+  ModifyTimestampComponent(now.day(), 8);
+  ModifyTimestampComponent(now.hour(), 11);
+  ModifyTimestampComponent(now.minute(), 14);
+  ModifyTimestampComponent(now.second(), 17);
 }
 
-void SdCardWrite(String timestamp, float value)
+void ModifyTimestampComponent(int digit, int i)
 {
-  _logfile.print(timestamp);
-  _logfile.print(", ");
+  _digit[0] = '0';
+  _digit[1] = '0';
+  
+  itoa(digit, _digit, 10);
+
+  if (digit < 10)
+  {
+    _timestamp[i]     = _zero;
+    _timestamp[i + 1] = _digit[0];
+  }
+  else
+  {
+    _timestamp[i]     = _digit[0];
+    _timestamp[i + 1] = _digit[1];
+  }
+}
+
+void SdCardWrite(float value)
+{
+  UpdateTimestamp();
+  
+  _logfile.print(_timestamp);
+  _logfile.print(C_COMMA);
   _logfile.print(value);
+  _logfile.println();
 
   _logfile.flush();  // Don't do this too frequently, i.e. < 1s
 
-  _flash = !_first;  // Don't flash the LED the first time.
-  _lastMillisFlash = _currentMillisFlash;
+  _flashSdWrite = !_first;  // Don't flash the LED the first time.
+  _lastMillisFlashSdWrite = _currentMillisFlashSdWrite;
 }
 
-void UpdateSerial(String timestamp, float value)
+void UpdateSerial()
 {
+  UpdateTimestamp();
+    
+  if (_statusReady || !_statusError)
+  {
+    _errorCode = 7;
+  }
+
+  Serial.print(_timestamp);
+  Serial.print(C_SPACE);
+  Serial.print(C_ERROR);
+  Serial.print(C_SPACE);
+  Serial.println(_errorCode);
+}
+
+void UpdateSerial(float value)
+{
+  UpdateTimestamp();
+  
   if (_statusReady)
   {
-    Serial.print(timestamp);
-    Serial.print(", ");
+    Serial.print(_timestamp);
+    Serial.print(C_COMMA);
     Serial.print(value);
     Serial.println();
   }
   else if (_statusError)
   {
-    Serial.print(timestamp);
-    Serial.print(" ERROR: ");
-    Serial.print(_errorMessage);
-    Serial.println();
+    Serial.print(_timestamp);
+    Serial.print(C_SPACE);
+    Serial.print(C_ERROR);
+    Serial.print(C_SPACE);
+    Serial.println(_errorCode);
   }
   else
   {
-    Serial.print(timestamp);
-    Serial.print(" UNKNOWN STATUS");
-    Serial.println();
+    _errorCode = 8;
+    Serial.print(_timestamp);
+    Serial.print(C_SPACE);
+    Serial.print(C_ERROR);
+    Serial.print(C_SPACE);
+    Serial.println(_errorCode);
   }
 }
