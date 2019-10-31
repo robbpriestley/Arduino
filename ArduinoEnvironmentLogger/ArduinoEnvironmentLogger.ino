@@ -35,10 +35,11 @@
 #define DHTTYPE DHT22
 
 bool _first;
-bool _flash;
 bool _debug;
 bool _statusReady;
 bool _statusError;
+bool _flashSdWrite;
+bool _flashActivity;
 bool _displayEnabled;
 bool _buttonRecPeriod;
 bool _buttonDisplayEnabled;
@@ -49,12 +50,12 @@ char _digit[2] = {0};
 char _timestamp[20] = {0};
 
 int _errorCode = 0;
-int _periodFlash = 333;
+int _periodFlashSdWrite = 333;
 
 unsigned long _lastMillisRec = 0;
 unsigned long _currentMillisRec = 0;
-unsigned long _lastMillisFlash = 0;
-unsigned long _currentMillisFlash = 0;
+unsigned long _lastMillisFlashSdWrite = 0;
+unsigned long _currentMillisFlashSdWrite = 0;
 
 unsigned long _recPeriod;
 unsigned long _recPeriodRemaining;
@@ -115,7 +116,7 @@ void setup()
   _dht.begin();
 
   _first = true;
-  _debug = false;
+  _debug = true;
   _displayEnabled = true;
 
   SetRecPeriodIndex();
@@ -133,13 +134,13 @@ void loop()
   ButtonStatus();
   UpdateStatusLeds();
 
-  _currentMillisFlash = millis();
+  _currentMillisFlashSdWrite = millis();
   _currentMillisRec = millis();
   RecPeriodRemaining();
 
-  if (_currentMillisFlash - _lastMillisFlash >= _periodFlash)
+  if (_currentMillisFlashSdWrite - _lastMillisFlashSdWrite >= _periodFlashSdWrite)
   {
-    _flash = false;
+    _flashSdWrite = false;
   }
 
   if (_statusError)
@@ -385,8 +386,8 @@ void UpdateStatusLeds()
   }
   else
   {
-    int statusReadyWrite = _statusReady && !_flash ? HIGH : LOW;
-    int statusErrorWrite = _statusError ? HIGH : LOW;
+    int statusReadyWrite = _statusReady ? HIGH : LOW;
+    int statusErrorWrite = _statusError || _flashSdWrite ? HIGH : LOW;
     
     digitalWrite(WRITE_D_PIN_READY_LED, statusReadyWrite);
     digitalWrite(WRITE_D_PIN_ERROR_LED, statusErrorWrite);
@@ -477,8 +478,8 @@ void SdCardWrite(float temperature, float humidity, float pressure)
 
   _logfile.flush();  // Don't do this too frequently, i.e. < 1s
 
-  _flash = !_first;  // Don't flash the LED the first time.
-  _lastMillisFlash = _currentMillisFlash;
+  _flashSdWrite = !_first;  // Don't flash the LED the first time.
+  _lastMillisFlashSdWrite = _currentMillisFlashSdWrite;
 }
 
 void UpdateSerial()
