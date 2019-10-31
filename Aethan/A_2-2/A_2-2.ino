@@ -1,7 +1,5 @@
 // *** DATA LOGGER ***
 
-// Code duplicated from:     https://github.com/robbpriestley/Arduino/blob/master/ArduinoDataLogger/ArduinoDataLogger.ino
-
 // Data Logging Tutorial:    https://learn.adafruit.com/adafruit_data_logger_shield/light_and_temperature_logger_use_it
 // Data Logger Shield Specs: https://cdn-learn.adafruit.com/downloads/pdf/adafruit-data-logger-shield.pdf
 // Realtime Clock (RTC):     https://learn.adafruit.com/adafruit_data_logger_shield/using_the_real_time_clock_2
@@ -19,8 +17,19 @@
  */
 
 #include <SD.h>
-#include <SPI.h>
 #include "RTClib.h"
+
+// ANALOG PINS
+
+// None
+
+// DIGITAL PINS
+
+#define WRITE_D_PIN_RED_LED   6   // Red LED
+#define WRITE_D_PIN_GREEN_LED 7   // Green LED
+#define READ_D_PIN_SD_WP      8   // SD card WP pin indicates if card is write protected
+#define READ_D_PIN_SD_CD      9   // SD card CD pin indicates if card is inserted
+#define READ_D_PIN_SD         10  // SD card base access pin
 
 bool _first;
 bool _statusReady;
@@ -53,18 +62,6 @@ const char* C_ERROR = "ERROR";
 const char* C_STARS = "***";
 const char C_COMMA = ',';
 const char C_SPACE = ' ';
-
-// ANALOG PINS
-
-// None
-
-// DIGITAL PINS
-
-const int WRITE_D_PIN_RED_LED   = 6;   // Red LED
-const int WRITE_D_PIN_GREEN_LED = 7;   // Green LED
-const int READ_D_PIN_SD_WP      = 8;   // SD card WP pin indicates if card is write protected
-const int READ_D_PIN_SD_CD      = 9;   // SD card CD pin indicates if card is inserted
-const int READ_D_PIN_SD         = 10;  // SD card base access pin
 
 // OBJECTS
 

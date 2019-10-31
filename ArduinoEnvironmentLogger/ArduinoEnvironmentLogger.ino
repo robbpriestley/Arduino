@@ -25,14 +25,27 @@
  */
 
 #include <SD.h>
-#include <SPI.h>
 #include <EEPROM.h>
-#include <Adafruit_Sensor.h>
 #include "DHT.h"
 #include "RTClib.h"
 #include "Adafruit_BMP3XX.h"
 
 #define DHTTYPE DHT22
+
+// ANALOG PINS
+
+#define READ_A_PIN_TEMP 1
+
+// DIGITAL PINS
+
+#define READ_D_PIN_DHT               2   // Pin used to read the DHT22 temperature sensor
+#define READ_D_PIN_BUTTON_DISP_EN    4   // Button to turn display on and off
+#define READ_D_PIN_BUTTON_REC_PERIOD 5   // Button to change recording period
+#define WRITE_D_PIN_RED_LED          6   // Red LED
+#define WRITE_D_PIN_GREEN_LED        7   // Green LED
+#define READ_D_PIN_SD_WP             8   // SD card WP pin indicates if card is write protected
+#define READ_D_PIN_SD_CD             9   // SD card CD pin indicates if card is inserted
+#define READ_D_PIN_SD                10  // SD card base access pin
 
 bool _first;
 bool _debug;
@@ -79,21 +92,6 @@ const char* C_ERROR = "ERROR";
 const char* C_STARS = "***";
 const char C_COMMA = ',';
 const char C_SPACE = ' ';
-
-// ANALOG PINS
-
-const int READ_A_PIN_TEMP = 1;
-
-// DIGITAL PINS
-
-const int READ_D_PIN_DHT               = 2;   // Pin used to read the DHT22 temperature sensor
-const int READ_D_PIN_BUTTON_DISP_EN    = 4;   // Button to turn display on and off
-const int READ_D_PIN_BUTTON_REC_PERIOD = 5;   // Button to change recording period
-const int WRITE_D_PIN_RED_LED          = 6;   // Red LED
-const int WRITE_D_PIN_GREEN_LED        = 7;   // Green LED
-const int READ_D_PIN_SD_WP             = 8;   // SD card WP pin indicates if card is write protected
-const int READ_D_PIN_SD_CD             = 9;   // SD card CD pin indicates if card is inserted
-const int READ_D_PIN_SD                = 10;  // SD card base access pin
 
 // OBJECTS
 
