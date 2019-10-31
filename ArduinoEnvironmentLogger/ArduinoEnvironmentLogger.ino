@@ -31,6 +31,8 @@
 #include "Adafruit_BMP3XX.h"
 
 #define DHTTYPE DHT22
+#define REC_PERIOD_ARRAY_LEN 6
+#define EEPROM_ADDRESS_REC_PERIOD_IDX 0  // EEPROM Address for Recording Period Index
 
 // ANALOG PINS
 
@@ -78,11 +80,8 @@ unsigned long _recPeriodRemaining;
 unsigned long _debugRecPeriod = 2000;
 
 int _recPeriodIndex = 0;
-const int REC_PERIOD_ARRAY_LEN = 6;
 const int _recPeriodMins[REC_PERIOD_ARRAY_LEN] = { 1, 5, 15, 30, 60, 90 };
 const unsigned long _recPeriodMillis[REC_PERIOD_ARRAY_LEN] = { 60000, 300000, 900000, 1800000, 3600000, 5400000 };
-
-const int EEPROM_ADDRESS_REC_PERIOD_IDX = 0;  // EEPROM Address for Recording Period Index
 
 const char* C_STARTUP_MESSAGE = "ENVIRONMENT LOGGER";
 const char* C_DEBUG_MODE = "DEBUG MODE";
