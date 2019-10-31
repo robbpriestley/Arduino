@@ -91,18 +91,6 @@ RTC_PCF8523 _rtc;                   // Realtime clock
 Adafruit_BMP3XX _bmp;               // Pressure sensor
 DHT _dht(READ_D_PIN_DHT, DHTTYPE);  // Temperature/humidity sensor
 
-// https://arduino.stackexchange.com/a/39127
-void DateTimeCb(uint16_t* date, uint16_t* time)
-{
-   DateTime now = _rtc.now();
-   
-   // return date using FAT_DATE macro to format fields
-   *date = FAT_DATE(now.year(), now.month(), now.day());
-  
-   // return time using FAT_TIME macro to format fields
-   *time = FAT_TIME(now.hour(), now.minute(), now.second());
-}
-
 void setup() 
 {
   Serial.begin(57600);
@@ -120,7 +108,7 @@ void setup()
   _dht.begin();
 
   _first = true;
-  _debug = true;
+  _debug = false;
   _displayEnabled = true;
 
   SetRecPeriodIndex();
@@ -183,7 +171,6 @@ void SdInit()
     
     if (!SD.exists(filename))
     {
-      SdFile::dateTimeCallback(DateTimeCb);
       _logfile = SD.open(filename, FILE_WRITE);  // Only open a new file if it doesn't exist.
       break;
     }
