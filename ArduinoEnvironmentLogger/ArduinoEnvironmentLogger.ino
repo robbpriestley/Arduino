@@ -51,11 +51,14 @@ char _timestamp[20] = {0};
 
 int _errorCode = 0;
 int _periodFlashSdWrite = 333;
+int _periodFlashActivity = 55;
 
 unsigned long _lastMillisRec = 0;
 unsigned long _currentMillisRec = 0;
 unsigned long _lastMillisFlashSdWrite = 0;
 unsigned long _currentMillisFlashSdWrite = 0;
+unsigned long _lastMillisFlashActivity = 0;
+unsigned long _currentMillisFlashActivity = 0;
 
 unsigned long _recPeriod;
 unsigned long _recPeriodRemaining;
@@ -83,14 +86,14 @@ const int READ_A_PIN_TEMP = 1;
 
 // DIGITAL PINS
 
-const int READ_D_PIN_DHT = 2;                 // Pin used to read the DHT22 temperature sensor
-const int READ_D_PIN_BUTTON_DISP_EN = 4;      // Button to turn display on and off
+const int READ_D_PIN_DHT               = 2;   // Pin used to read the DHT22 temperature sensor
+const int READ_D_PIN_BUTTON_DISP_EN    = 4;   // Button to turn display on and off
 const int READ_D_PIN_BUTTON_REC_PERIOD = 5;   // Button to change recording period
-const int WRITE_D_PIN_ERROR_LED = 6;          // Red LED
-const int WRITE_D_PIN_READY_LED = 7;          // Green LED
-const int READ_D_PIN_SD_WP = 8;               // SD card WP pin indicates if card is write protected
-const int READ_D_PIN_SD_CD = 9;               // SD card CD pin indicates if card is inserted
-const int READ_D_PIN_SD = 10;                 // SD card base access pin
+const int WRITE_D_PIN_RED_LED          = 6;   // Red LED
+const int WRITE_D_PIN_GREEN_LED        = 7;   // Green LED
+const int READ_D_PIN_SD_WP             = 8;   // SD card WP pin indicates if card is write protected
+const int READ_D_PIN_SD_CD             = 9;   // SD card CD pin indicates if card is inserted
+const int READ_D_PIN_SD                = 10;  // SD card base access pin
 
 // OBJECTS
 
@@ -134,13 +137,19 @@ void loop()
   ButtonStatus();
   UpdateStatusLeds();
 
-  _currentMillisFlashSdWrite = millis();
   _currentMillisRec = millis();
+  _currentMillisFlashSdWrite = millis();
+  _currentMillisFlashActivity = millis();
   RecPeriodRemaining();
 
   if (_currentMillisFlashSdWrite - _lastMillisFlashSdWrite >= _periodFlashSdWrite)
   {
     _flashSdWrite = false;
+  }
+
+  if (_currentMillisFlashActivity - _lastMillisFlashActivity >= _periodFlashActivity)
+  {
+    _flashActivity = false;
   }
 
   if (_statusError)
@@ -198,8 +207,8 @@ void PinInit()
   pinMode(READ_D_PIN_SD_CD, INPUT_PULLUP);
   pinMode(READ_D_PIN_SD_WP, INPUT_PULLUP);
 
-  pinMode(WRITE_D_PIN_READY_LED, OUTPUT);
-  pinMode(WRITE_D_PIN_ERROR_LED, OUTPUT);
+  pinMode(WRITE_D_PIN_GREEN_LED, OUTPUT);
+  pinMode(WRITE_D_PIN_RED_LED, OUTPUT);
 }
 
 void RtcInit()
@@ -210,7 +219,7 @@ void RtcInit()
     Serial.print(C_ERROR);
     Serial.print(C_SPACE);
     Serial.println(_errorCode);
-    digitalWrite(WRITE_D_PIN_ERROR_LED, HIGH);
+    digitalWrite(WRITE_D_PIN_RED_LED, HIGH);
     while (1);
   }
 
@@ -224,7 +233,7 @@ void BmpInit()
     Serial.print(C_ERROR);
     Serial.print(C_SPACE);
     Serial.println(_errorCode);
-    digitalWrite(WRITE_D_PIN_ERROR_LED, HIGH);
+    digitalWrite(WRITE_D_PIN_RED_LED, HIGH);
     while (1);
   }
 
@@ -381,16 +390,16 @@ void UpdateStatusLeds()
 {
   if (!_displayEnabled)
   {
-    digitalWrite(WRITE_D_PIN_READY_LED, LOW);
-    digitalWrite(WRITE_D_PIN_ERROR_LED, LOW);
+    digitalWrite(WRITE_D_PIN_GREEN_LED, LOW);
+    digitalWrite(WRITE_D_PIN_RED_LED, LOW);
   }
   else
   {
-    int statusReadyWrite = _statusReady ? HIGH : LOW;
-    int statusErrorWrite = _statusError || _flashSdWrite ? HIGH : LOW;
+    int green = _statusReady && !_flashActivity ? HIGH : LOW;
+    int red = _statusError || _flashSdWrite ? HIGH : LOW;
     
-    digitalWrite(WRITE_D_PIN_READY_LED, statusReadyWrite);
-    digitalWrite(WRITE_D_PIN_ERROR_LED, statusErrorWrite);
+    digitalWrite(WRITE_D_PIN_GREEN_LED, green);
+    digitalWrite(WRITE_D_PIN_RED_LED, red);
   }
 }
 
@@ -400,6 +409,9 @@ void RecPeriodRemaining()
 
   if (recPeriodRemaining / 1000 != _recPeriodRemaining / 1000)
   {
+    _flashActivity = true;
+    _lastMillisFlashActivity = _currentMillisFlashActivity;
+    
     _recPeriodRemaining = recPeriodRemaining;
     Serial.println(_recPeriodRemaining / 1000); 
   }
