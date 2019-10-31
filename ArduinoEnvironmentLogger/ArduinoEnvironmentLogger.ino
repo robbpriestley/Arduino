@@ -65,17 +65,7 @@ const int REC_PERIOD_ARRAY_LEN = 6;
 const int _recPeriodMins[REC_PERIOD_ARRAY_LEN] = { 1, 5, 15, 30, 60, 90 };
 const unsigned long _recPeriodMillis[REC_PERIOD_ARRAY_LEN] = { 60000, 300000, 900000, 1800000, 3600000, 5400000 };
 
-const int READ_A_PIN_TEMP = 1;
-const int READ_D_PIN_DHT = 2;                 // Pin used to read the DHT22 temperature sensor
-const int READ_D_PIN_BUTTON_DISP_EN = 4;      // Button to turn display on and off
-const int READ_D_PIN_BUTTON_REC_PERIOD = 5;   // Button to change recording period
-const int READ_D_PIN_SD = 10;                 // SD card base access pin
-const int READ_D_PIN_SD_CD = 9;               // SD card CD pin indicates if card is inserted
-const int READ_D_PIN_SD_WP = 8;               // SD card WP pin indicates if card is write protected
-const int WRITE_D_PIN_READY_LED = 7;          // Green LED
-const int WRITE_D_PIN_ERROR_LED = 6;          // Red LED
 const int EEPROM_ADDRESS_REC_PERIOD_IDX = 0;  // EEPROM Address for Recording Period Index
-const float REFERENCE_VOLTAGE = 5120;         // In mV
 
 const char* C_STARTUP_MESSAGE = "ENVIRONMENT LOGGER";
 const char* C_DEBUG_MODE = "DEBUG MODE";
@@ -85,6 +75,23 @@ const char* C_ERROR = "ERROR";
 const char* C_STARS = "***";
 const char C_COMMA = ',';
 const char C_SPACE = ' ';
+
+// ANALOG PINS
+
+const int READ_A_PIN_TEMP = 1;
+
+// DIGITAL PINS
+
+const int READ_D_PIN_DHT = 2;                 // Pin used to read the DHT22 temperature sensor
+const int READ_D_PIN_BUTTON_DISP_EN = 4;      // Button to turn display on and off
+const int READ_D_PIN_BUTTON_REC_PERIOD = 5;   // Button to change recording period
+const int WRITE_D_PIN_ERROR_LED = 6;          // Red LED
+const int WRITE_D_PIN_READY_LED = 7;          // Green LED
+const int READ_D_PIN_SD_WP = 8;               // SD card WP pin indicates if card is write protected
+const int READ_D_PIN_SD_CD = 9;               // SD card CD pin indicates if card is inserted
+const int READ_D_PIN_SD = 10;                 // SD card base access pin
+
+// OBJECTS
 
 File _logfile;                      // SD card logfile
 RTC_PCF8523 _rtc;                   // Realtime clock
