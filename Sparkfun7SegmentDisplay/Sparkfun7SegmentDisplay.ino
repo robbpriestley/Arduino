@@ -1,3 +1,5 @@
+// https://learn.sparkfun.com/tutorials/using-the-serial-7-segment-display/all
+
 /* Serial 7-Segment Display Example Code
     Serial Mode Stopwatch
    by: Jim Lindblom
