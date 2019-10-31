@@ -344,6 +344,8 @@ void ButtonStatus()
     _first = true;
     _buttonRecPeriod = false;
     _recPeriodIndex = _recPeriodIndex == REC_PERIOD_ARRAY_LEN - 1 ? 0 : _recPeriodIndex + 1;
+    _recPeriod = _recPeriodMillis[_recPeriodIndex];
+    _recPeriodRemaining = _recPeriodMillis[_recPeriodIndex];
     EEPROM.put(EEPROM_ADDRESS_REC_PERIOD_IDX, _recPeriodIndex);
     DisplayRecPeriod();
   }
