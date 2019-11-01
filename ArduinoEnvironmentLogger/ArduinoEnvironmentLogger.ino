@@ -1,6 +1,17 @@
-// *** ENVIRONMENT LOGGER ***
-// Logs temperature in °C, humidity in %, and pressure in hPa
+/* *** ENVIRONMENT LOGGER ***
+ *  
+Logs temperature in °C, humidity in %, and pressure in hPa
 
+Left button: display state (temperature, humidity, pressure, rec time remaining)
+
+This program seems to be at the absolute limit of memory usage. I had to use a variety of coding optimizations
+and resorted to some less-than-ideal coding styles to get this program to work. It seems like adding the libraries
+for all of the different sensors and peripheral devices (SD card, RTC, DHT, BMP) is a big reason why the program
+got large. It's at the point here where pressing the display state doesn't work because the _displayState variable
+gets re-initialized every time the SD card writes. Adding debug statements and messing around with the code to
+try to fix this destablizes unit and isn't working. It's just barely working.
+
+*/
 // Data Logging Tutorial:    https://learn.adafruit.com/adafruit_data_logger_shield/light_and_temperature_logger_use_it
 // Data Logger Shield Specs: https://cdn-learn.adafruit.com/downloads/pdf/adafruit-data-logger-shield.pdf
 // Realtime Clock (RTC):     https://learn.adafruit.com/adafruit_data_logger_shield/using_the_real_time_clock_2
@@ -26,11 +37,15 @@
 
 #include <SD.h>
 #include <EEPROM.h>
+#include <SoftwareSerial.h>
 #include "DHT.h"
 #include "RTClib.h"
 #include "Adafruit_BMP3XX.h"
 
 #define DHTTYPE DHT22
+#define REC_PERIOD 60000                 // *** RECORDING PERIOD in Milliseconds ***
+#define PERIOD_FLASH 333
+#define PERIOD_FLASH_ACTIVITY 55
 #define REC_PERIOD_ARRAY_LEN 6
 #define EEPROM_ADDRESS_REC_PERIOD_IDX 0  // EEPROM Address for Recording Period Index
 
@@ -40,34 +55,37 @@
 
 // DIGITAL PINS
 
-#define READ_D_PIN_DHT               2   // Pin used to read the DHT22 temperature sensor
-#define READ_D_PIN_BUTTON_DISP_EN    4   // Button to turn display on and off
-#define READ_D_PIN_BUTTON_REC_PERIOD 5   // Button to change recording period
-#define WRITE_D_PIN_RED_LED          6   // Red LED
-#define WRITE_D_PIN_GREEN_LED        7   // Green LED
-#define READ_D_PIN_SD_WP             8   // SD card WP pin indicates if card is write protected
-#define READ_D_PIN_SD_CD             9   // SD card CD pin indicates if card is inserted
-#define READ_D_PIN_SD                10  // SD card base access pin
+#define WRITE_D_PIN_S7S_RX        0   // 7-segment RX pin (dummy/unused?)
+#define READ_D_PIN_DHT            2   // Pin used to read the DHT22 temperature sensor
+#define WRITE_D_PIN_S7S_TX        3   // 7-segment TX pin
+#define READ_D_PIN_BUTTON_DISP_EN 4   // Button to turn display on and off
+#define READ_D_PIN_BUTTON_DISP_ST 5   // Button to change recording period
+#define WRITE_D_PIN_RED_LED       6   // Red LED
+#define WRITE_D_PIN_GREEN_LED     7   // Green LED
+#define READ_D_PIN_SD_WP          8   // SD card WP pin indicates if card is write protected
+#define READ_D_PIN_SD_CD          9   // SD card CD pin indicates if card is inserted
+#define READ_D_PIN_SD             10  // SD card base access pin
 
 bool _first;
-bool _debug;
 bool _statusReady;
 bool _statusError;
 bool _flashSdWrite;
 bool _flashActivity;
 bool _displayEnabled;
-bool _buttonRecPeriod;
+bool _buttonDisplayState;
 bool _buttonDisplayEnabled;
+
+short _displayState;  // 0 == temperature, 1 == humidity, 2 == pressure, 3 == remaining
 
 char _zero = '0';
 char _year[4] = {0};
 char _digit[2] = {0};
 char _timestamp[20] = {0};
+char _displayString[4];  // Will be used with sprintf to create strings
 
-int _errorCode = 0;
-int _periodFlashSdWrite = 333;
-int _periodFlashActivity = 55;
+short _errorCode = 0;
 
+unsigned long _recPeriodRemaining;
 unsigned long _lastMillisRec = 0;
 unsigned long _currentMillisRec = 0;
 unsigned long _lastMillisFlashSdWrite = 0;
@@ -75,52 +93,26 @@ unsigned long _currentMillisFlashSdWrite = 0;
 unsigned long _lastMillisFlashActivity = 0;
 unsigned long _currentMillisFlashActivity = 0;
 
-unsigned long _recPeriod;
-unsigned long _recPeriodRemaining;
-unsigned long _debugRecPeriod = 2000;
-
-int _recPeriodIndex = 0;
-const int _recPeriodMins[REC_PERIOD_ARRAY_LEN] = { 1, 5, 15, 30, 60, 90 };
-const unsigned long _recPeriodMillis[REC_PERIOD_ARRAY_LEN] = { 60000, 300000, 900000, 1800000, 3600000, 5400000 };
-
-const char* C_STARTUP_MESSAGE = "ENVIRONMENT LOGGER";
-const char* C_DEBUG_MODE = "DEBUG MODE";
-const char* C_REC_PERIOD = "REC PERIOD";
-const char* C_DISPLAY = "DISPLAY";
-const char* C_ERROR = "ERROR";
-const char* C_STARS = "***";
-const char C_COMMA = ',';
-const char C_SPACE = ' ';
-
 // OBJECTS
 
 File _logfile;                      // SD card logfile
 RTC_PCF8523 _rtc;                   // Realtime clock
 Adafruit_BMP3XX _bmp;               // Pressure sensor
 DHT _dht(READ_D_PIN_DHT, DHTTYPE);  // Temperature/humidity sensor
+SoftwareSerial _s7s(WRITE_D_PIN_S7S_RX, WRITE_D_PIN_S7S_TX);
 
 void setup() 
 {
   Serial.begin(57600);
-  
-  Serial.print(C_STARS);
-  Serial.print(C_SPACE);
-  Serial.print(C_STARTUP_MESSAGE);
-  Serial.print(C_SPACE);
-  Serial.println(C_STARS);
-    
+
   PinInit();
   RtcInit();
-  BmpInit();
-  CharInit();
+  BmpInit();  
+  CharInit();  
   _dht.begin();
+  DisplayInit();
 
   _first = true;
-  _debug = true;
-  _displayEnabled = true;
-
-  SetRecPeriodIndex();
-  DisplayRecPeriod();
 }
 
 void loop() 
@@ -139,28 +131,26 @@ void loop()
   _currentMillisFlashActivity = millis();
   RecPeriodRemaining();
 
-  if (_currentMillisFlashSdWrite - _lastMillisFlashSdWrite >= _periodFlashSdWrite)
+  if (_currentMillisFlashSdWrite - _lastMillisFlashSdWrite >= PERIOD_FLASH)
   {
     _flashSdWrite = false;
   }
 
-  if (_currentMillisFlashActivity - _lastMillisFlashActivity >= _periodFlashActivity)
+  if (_currentMillisFlashActivity - _lastMillisFlashActivity >= PERIOD_FLASH_ACTIVITY)
   {
     _flashActivity = false;
   }
 
-  if (_statusError)
-  {
-    UpdateSerial();
-  }
-  else if (_currentMillisRec - _lastMillisRec >= _recPeriod || _first)
-  {
+  if (_currentMillisRec - _lastMillisRec >= REC_PERIOD || _first)
+  {    
     float temperature = _dht.readTemperature();
     float humidity = _dht.readHumidity();
-    float pressure = ReadPressure();
+    float pressure = _bmp.pressure / 100.0;
+    _bmp.performReading();
 
     SdCardWrite(temperature, humidity, pressure);
     UpdateSerial(temperature, humidity, pressure);
+    UpdateDisplay(temperature, humidity, pressure);
 
     _lastMillisRec = _currentMillisRec;
     _first = false;
@@ -199,7 +189,8 @@ void SdInit()
 void PinInit()
 {
   pinMode(READ_D_PIN_DHT, INPUT);
-  pinMode(READ_D_PIN_BUTTON_REC_PERIOD, INPUT);
+  pinMode(READ_D_PIN_BUTTON_DISP_EN, INPUT);
+  pinMode(READ_D_PIN_BUTTON_DISP_ST, INPUT);
   
   pinMode(READ_D_PIN_SD_CD, INPUT_PULLUP);
   pinMode(READ_D_PIN_SD_WP, INPUT_PULLUP);
@@ -213,8 +204,6 @@ void RtcInit()
   if (!_rtc.begin())
   {
     _errorCode = 2;
-    Serial.print(C_ERROR);
-    Serial.print(C_SPACE);
     Serial.println(_errorCode);
     digitalWrite(WRITE_D_PIN_RED_LED, HIGH);
     while (1);
@@ -227,8 +216,6 @@ void BmpInit()
 {
   if (!_bmp.begin()) {
     _errorCode = 8;
-    Serial.print(C_ERROR);
-    Serial.print(C_SPACE);
     Serial.println(_errorCode);
     digitalWrite(WRITE_D_PIN_RED_LED, HIGH);
     while (1);
@@ -239,14 +226,7 @@ void BmpInit()
   _bmp.setIIRFilterCoeff(BMP3_IIR_FILTER_COEFF_3);
 
   // Perform first reading to "clear" bad value
-  if (!_bmp.performReading())
-  {
-    _errorCode = 9;
-    Serial.print(C_ERROR);
-    Serial.print(C_SPACE);
-    Serial.println(_errorCode);
-    return;
-  }
+  _bmp.performReading();
 }
 
 void CharInit()
@@ -263,36 +243,14 @@ void CharInit()
   _timestamp[16] = ':';
 }
 
-void SetRecPeriodIndex()
+void DisplayInit()
 {
-  if (_debug)
-  {
-    _recPeriod = _debugRecPeriod;
-  }
-  else
-  {
-    EEPROM.get(EEPROM_ADDRESS_REC_PERIOD_IDX, _recPeriodIndex);
+  _s7s.begin(9600);
+  ClearDisplay();
+  SetBrightness(255);
 
-    if (_recPeriodIndex < 0 || _recPeriodIndex >= REC_PERIOD_ARRAY_LEN)
-    {
-      // Bad value stored in EEPROM, or first time use.
-      _recPeriodIndex = 0;
-      EEPROM.put(EEPROM_ADDRESS_REC_PERIOD_IDX, 0);
-    }
-
-    _recPeriod = _recPeriodMillis[_recPeriodIndex];
-  }
-}
-
-void DisplayRecPeriod()
-{
-  if (!_debug)
-  {
-    int mins = _recPeriodMins[_recPeriodIndex];
-    Serial.print(C_REC_PERIOD);
-    Serial.print(C_SPACE);
-    Serial.println(mins);
-  }
+  _displayState = 0;
+  _displayEnabled = true;
 }
 
 void CheckSdInit(int sdCardIn)
@@ -345,30 +303,37 @@ void DetermineStatusReady(int sdCardIn, int sdCardWriteProtect)
 
 void ButtonStatus()
 {
-  // Button Recording Period
+  // Button Display State
+
+  int button;
   
-  int buttonRecPeriodState = digitalRead(READ_D_PIN_BUTTON_REC_PERIOD);
+  button = digitalRead(READ_D_PIN_BUTTON_DISP_ST);
 
-  if (buttonRecPeriodState == HIGH)
+  if (button == HIGH)
   {
-    _buttonRecPeriod = true;
+    _buttonDisplayState = true;
   }
-  else if (_buttonRecPeriod)
+  else if (_buttonDisplayState)
   {
+    _buttonDisplayState = false;
+
+    if (_displayState <= 2)
+    {
+      _displayState++;
+    }
+    else
+    {
+      _displayState = 0;
+    }
+
     _first = true;
-    _buttonRecPeriod = false;
-    _recPeriodIndex = _recPeriodIndex == REC_PERIOD_ARRAY_LEN - 1 ? 0 : _recPeriodIndex + 1;
-    _recPeriod = _recPeriodMillis[_recPeriodIndex];
-    _recPeriodRemaining = _recPeriodMillis[_recPeriodIndex];
-    EEPROM.put(EEPROM_ADDRESS_REC_PERIOD_IDX, _recPeriodIndex);
-    DisplayRecPeriod();
   }
-
+  
   // Button Display Enabled
 
-  int buttonDisplayEnabledState = digitalRead(READ_D_PIN_BUTTON_DISP_EN);
+  button = digitalRead(READ_D_PIN_BUTTON_DISP_EN);
 
-  if (buttonDisplayEnabledState == HIGH)
+  if (button == HIGH)
   {
     _buttonDisplayEnabled = true;
   }
@@ -377,9 +342,7 @@ void ButtonStatus()
     _buttonDisplayEnabled = false;
     _displayEnabled = !_displayEnabled;
 
-    Serial.print(C_DISPLAY);
-    Serial.print(C_SPACE);
-    Serial.println(_displayEnabled);
+    _first = true;
   }
 }
 
@@ -402,7 +365,7 @@ void UpdateStatusLeds()
 
 void RecPeriodRemaining()
 {
-  unsigned long recPeriodRemaining = _recPeriod - (_currentMillisRec - _lastMillisRec);
+  unsigned long recPeriodRemaining = REC_PERIOD - (_currentMillisRec - _lastMillisRec);
 
   if (recPeriodRemaining / 1000 != _recPeriodRemaining / 1000)
   {
@@ -412,20 +375,6 @@ void RecPeriodRemaining()
     _recPeriodRemaining = recPeriodRemaining;
     Serial.println(_recPeriodRemaining / 1000); 
   }
-}
-
-float ReadPressure()
-{
-  if (!_bmp.performReading())
-  {
-    _errorCode = 9;
-    Serial.print(C_ERROR);
-    Serial.print(C_SPACE);
-    Serial.println(_errorCode);
-    return;
-  }
-  
-  return _bmp.pressure / 100.0;
 }
 
 void UpdateTimestamp()
@@ -477,11 +426,11 @@ void SdCardWrite(float temperature, float humidity, float pressure)
   UpdateTimestamp();
   
   _logfile.print(_timestamp);
-  _logfile.print(C_COMMA);
+  _logfile.print(',');
   _logfile.print(temperature);
-  _logfile.print(C_COMMA);
+  _logfile.print(',');
   _logfile.print(humidity);
-  _logfile.print(C_COMMA);
+  _logfile.print(',');
   _logfile.print(pressure);
   _logfile.println();
 
@@ -491,62 +440,81 @@ void SdCardWrite(float temperature, float humidity, float pressure)
   _lastMillisFlashSdWrite = _currentMillisFlashSdWrite;
 }
 
-void UpdateSerial()
-{
-  UpdateTimestamp();
-  
-  if (_debug)
-  {
-    Serial.println(C_DEBUG_MODE);
-  }
-  
-  if (_statusReady || !_statusError)
-  {
-    _errorCode = 7;
-  }
-
-  Serial.print(_timestamp);
-  Serial.print(C_SPACE);
-  Serial.print(C_ERROR);
-  Serial.print(C_SPACE);
-  Serial.println(_errorCode);
-}
-
 void UpdateSerial(float temperature, float humidity, float pressure)
 {
   UpdateTimestamp();
-
-  if (_debug)
-  {
-    Serial.print(C_DEBUG_MODE);
-    Serial.print(C_SPACE);
-  }
   
   if (_statusReady)
   {
     Serial.print(_timestamp);
-    Serial.print(C_COMMA);
+    Serial.print(',');
     Serial.print(temperature);
-    Serial.print(C_COMMA);
+    Serial.print(',');
     Serial.print(humidity);
-    Serial.print(C_COMMA);
+    Serial.print(',');
     Serial.println(pressure);
   }
   else if (_statusError)
   {
     Serial.print(_timestamp);
-    Serial.print(C_SPACE);
-    Serial.print(C_ERROR);
-    Serial.print(C_SPACE);
+    Serial.print(',');
     Serial.println(_errorCode);
   }
   else
   {
     _errorCode = 8;
     Serial.print(_timestamp);
-    Serial.print(C_SPACE);
-    Serial.print(C_ERROR);
-    Serial.print(C_SPACE);
+    Serial.print(',');
     Serial.println(_errorCode);
   }
+}
+
+void UpdateDisplay(float temperature, float humidity, float pressure)
+{  
+  if (_displayEnabled && _displayState == 0)
+  {
+    sprintf(_displayString, "%4d", (int)(temperature * 10));
+    _s7s.print(_displayString);
+    SetDecimals(0b00000100);
+  }
+  else if (_displayEnabled && _displayState == 1)
+  {
+    sprintf(_displayString, "%4d", (int)(humidity * 10));
+    _s7s.print(_displayString);
+    SetDecimals(0b00000100);
+  }
+  else if (_displayEnabled && _displayState == 2)
+  {
+    sprintf(_displayString, "%4d", (int)pressure);
+    _s7s.print(_displayString);
+    SetDecimals(0b00000000);
+  }
+  else if (_displayEnabled && _displayState == 3)
+  {
+    sprintf(_displayString, "%4d", _recPeriodRemaining / 1000);
+    _s7s.print(_displayString);
+    SetDecimals(0b00000000);
+  }
+}
+
+void ClearDisplay()
+{
+  _s7s.write(0x76);  // Clear display command
+}
+
+void SetBrightness(byte value)
+{
+  _s7s.write(0x7A);  // Set brightness command byte
+  _s7s.write(value);  // brightness data byte (0~255)
+}
+
+// Turn on any, none, or all of the decimals.
+// The six lowest bits in the decimals parameter sets a decimal 
+// (or colon, or apostrophe) on or off. A 1 indicates on, 0 off.
+// [MSB] (X)(X)(Apos)(Colon)(Digit 4)(Digit 3)(Digit2)(Digit1)
+
+void SetDecimals(byte decimals)
+{
+  _s7s.write(0x77);
+  _s7s.write(decimals);
 }
