@@ -31,8 +31,6 @@ try to fix this destablizes unit and isn't working. It's just barely working.
   5: SD card is write protected
   6: Log file error
   7: Unknown status
-  8: BMP init error
-  9: BMP read error
  */
 
 #include <SD.h>
@@ -40,7 +38,6 @@ try to fix this destablizes unit and isn't working. It's just barely working.
 #include <SoftwareSerial.h>
 #include "DHT.h"
 #include "RTClib.h"
-#include "Adafruit_BMP3XX.h"
 
 #define DHTTYPE DHT22
 #define REC_PERIOD 60000                 // *** RECORDING PERIOD in Milliseconds ***
@@ -75,7 +72,7 @@ bool _displayEnabled;
 bool _buttonDisplayState;
 bool _buttonDisplayEnabled;
 
-short _displayState;  // 0 == temperature, 1 == humidity, 2 == pressure, 3 == remaining
+int _displayState;  // 0 == temperature, 1 == humidity, 3 == remaining
 
 char _zero = '0';
 char _year[4] = {0};
@@ -97,7 +94,6 @@ unsigned long _currentMillisFlashActivity = 0;
 
 File _logfile;                      // SD card logfile
 RTC_PCF8523 _rtc;                   // Realtime clock
-Adafruit_BMP3XX _bmp;               // Pressure sensor
 DHT _dht(READ_D_PIN_DHT, DHTTYPE);  // Temperature/humidity sensor
 SoftwareSerial _s7s(WRITE_D_PIN_S7S_RX, WRITE_D_PIN_S7S_TX);
 
@@ -107,7 +103,6 @@ void setup()
 
   PinInit();
   RtcInit();
-  BmpInit();  
   CharInit();  
   _dht.begin();
   DisplayInit();
@@ -116,7 +111,7 @@ void setup()
 }
 
 void loop() 
-{
+{  
   int sdCardIn = digitalRead(READ_D_PIN_SD_CD);            // Is an SD card inserted?
   int sdCardWriteProtect = digitalRead(READ_D_PIN_SD_WP);  // Is the SD card write protected?
 
@@ -142,15 +137,13 @@ void loop()
   }
 
   if (_currentMillisRec - _lastMillisRec >= REC_PERIOD || _first)
-  {    
+  {        
     float temperature = _dht.readTemperature();
     float humidity = _dht.readHumidity();
-    float pressure = _bmp.pressure / 100.0;
-    _bmp.performReading();
 
-    SdCardWrite(temperature, humidity, pressure);
-    UpdateSerial(temperature, humidity, pressure);
-    UpdateDisplay(temperature, humidity, pressure);
+    SdCardWrite(temperature, humidity);
+    UpdateSerial(temperature, humidity);
+    UpdateDisplay(temperature, humidity);
 
     _lastMillisRec = _currentMillisRec;
     _first = false;
@@ -210,23 +203,6 @@ void RtcInit()
   }
 
   // _rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));  // Uncomment to set date and time.
-}
-
-void BmpInit()
-{
-  if (!_bmp.begin()) {
-    _errorCode = 8;
-    Serial.println(_errorCode);
-    digitalWrite(WRITE_D_PIN_RED_LED, HIGH);
-    while (1);
-  }
-
-  _bmp.setTemperatureOversampling(BMP3_OVERSAMPLING_8X);
-  _bmp.setPressureOversampling(BMP3_OVERSAMPLING_4X);
-  _bmp.setIIRFilterCoeff(BMP3_IIR_FILTER_COEFF_3);
-
-  // Perform first reading to "clear" bad value
-  _bmp.performReading();
 }
 
 void CharInit()
@@ -304,12 +280,10 @@ void DetermineStatusReady(int sdCardIn, int sdCardWriteProtect)
 void ButtonStatus()
 {
   // Button Display State
-
-  int button;
   
-  button = digitalRead(READ_D_PIN_BUTTON_DISP_ST);
+  int buttonDisplayState = digitalRead(READ_D_PIN_BUTTON_DISP_ST);
 
-  if (button == HIGH)
+  if (buttonDisplayState == HIGH)
   {
     _buttonDisplayState = true;
   }
@@ -317,7 +291,7 @@ void ButtonStatus()
   {
     _buttonDisplayState = false;
 
-    if (_displayState <= 2)
+    if (_displayState <= 1)
     {
       _displayState++;
     }
@@ -331,9 +305,9 @@ void ButtonStatus()
   
   // Button Display Enabled
 
-  button = digitalRead(READ_D_PIN_BUTTON_DISP_EN);
+  int buttonDisplayEnable = digitalRead(READ_D_PIN_BUTTON_DISP_EN);
 
-  if (button == HIGH)
+  if (buttonDisplayEnable == HIGH)
   {
     _buttonDisplayEnabled = true;
   }
@@ -421,7 +395,7 @@ void ModifyTimestampComponent(int digit, int i)
   decided to only access the RTC immediately prior to using the timestamp value. This seems to have resolved the problem with the glitch.
 */
 
-void SdCardWrite(float temperature, float humidity, float pressure)
+void SdCardWrite(float temperature, float humidity)
 {
   UpdateTimestamp();
   
@@ -430,8 +404,6 @@ void SdCardWrite(float temperature, float humidity, float pressure)
   _logfile.print(temperature);
   _logfile.print(',');
   _logfile.print(humidity);
-  _logfile.print(',');
-  _logfile.print(pressure);
   _logfile.println();
 
   _logfile.flush();  // Don't do this too frequently, i.e. < 1s
@@ -440,7 +412,7 @@ void SdCardWrite(float temperature, float humidity, float pressure)
   _lastMillisFlashSdWrite = _currentMillisFlashSdWrite;
 }
 
-void UpdateSerial(float temperature, float humidity, float pressure)
+void UpdateSerial(float temperature, float humidity)
 {
   UpdateTimestamp();
   
@@ -450,9 +422,7 @@ void UpdateSerial(float temperature, float humidity, float pressure)
     Serial.print(',');
     Serial.print(temperature);
     Serial.print(',');
-    Serial.print(humidity);
-    Serial.print(',');
-    Serial.println(pressure);
+    Serial.println(humidity);
   }
   else if (_statusError)
   {
@@ -469,7 +439,7 @@ void UpdateSerial(float temperature, float humidity, float pressure)
   }
 }
 
-void UpdateDisplay(float temperature, float humidity, float pressure)
+void UpdateDisplay(float temperature, float humidity)
 {  
   if (_displayEnabled && _displayState == 0)
   {
@@ -485,15 +455,13 @@ void UpdateDisplay(float temperature, float humidity, float pressure)
   }
   else if (_displayEnabled && _displayState == 2)
   {
-    sprintf(_displayString, "%4d", (int)pressure);
-    _s7s.print(_displayString);
-    SetDecimals(0b00000000);
-  }
-  else if (_displayEnabled && _displayState == 3)
-  {
     sprintf(_displayString, "%4d", _recPeriodRemaining / 1000);
     _s7s.print(_displayString);
     SetDecimals(0b00000000);
+  }
+  else
+  {
+    ClearDisplay();
   }
 }
 
