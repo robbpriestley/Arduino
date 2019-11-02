@@ -23,68 +23,71 @@
 
   http://www.arduino.cc/en/Tutorial/Blink
 */
-const int BlueLed = 10;
-const int Led_External= 13;
-const int Button= 2;
-const int Loud = 8;
-bool ButtonDown = false;
-bool LED_Power= false;
+
+const int BLUE_LED = 10;
+const int RED_LED = 13;
+const int BUTTON_INPUT = 2;
+const int BUZZER = 8;
+
+bool Button_Pressed = false;
+bool Red_LED_State= false;
 
 // the setup function runs once when you press reset or power the board
-void setup() {
-
+void setup()
+{
   // initialize serial communications at 9600 bps:
   Serial.begin(9600);
+
+  pinMode(BUTTON_INPUT, INPUT);
   
-  // initialize digital pin LED_BUILTIN as an output.
-  pinMode(Led_External, OUTPUT);
-  pinMode(Button, INPUT);
-  pinMode(BlueLed, OUTPUT);
+  pinMode(RED_LED, OUTPUT);
+  pinMode(BLUE_LED, OUTPUT);
+  pinMode(BUZZER, OUTPUT);
 }
 
 // the loop function runs over and over again forever
-void loop() {
-
-  int buttonState = digitalRead(Button);
+void loop()
+{
+  int buttonState = digitalRead(BUTTON_INPUT);
 
   // check if the pushbutton is pressed. If it is, the buttonState is HIGH:
-  if (buttonState == HIGH) {
+  if (buttonState == HIGH)
+  {
     
-    Serial.print("ButtonDown: ");
-    Serial.println(ButtonDown);
+    Serial.print("Button_Pressed: ");
+    Serial.println(Button_Pressed);
     
-    ButtonDown = true;
+    Button_Pressed = true;
   }
-  else if (buttonState == LOW && ButtonDown == true) {
+  else if (buttonState == LOW && Button_Pressed == true)
+  {
     
-    LED_Power = !LED_Power;
-    ButtonDown = false;
+    Red_LED_State = !Red_LED_State;
+    Button_Pressed = false;
 
-    Serial.print("LED_Power: ");
-    Serial.println(LED_Power);
-    Serial.print("ButtonDown: ");
-    Serial.println(ButtonDown);
+    Serial.print("Red_LED_State: ");
+    Serial.println(Red_LED_State);
+    Serial.print("Button_Pressed: ");
+    Serial.println(Button_Pressed);
   }
 
-  if (LED_Power == true) {
-    // turn LED on:
-    digitalWrite(Led_External, HIGH);
-  } else {
-    // turn LED off:
-    digitalWrite(Led_External, LOW);
+  if (Red_LED_State == true)
+  {
+    digitalWrite(RED_LED, HIGH);
   }
-    if (buttonState == HIGH) {
-    // turn LED on:
-    digitalWrite(BlueLed, HIGH);
-  } else {
-    // turn LED off:
-    digitalWrite(BlueLed, LOW);
+  else
+  {
+    digitalWrite(RED_LED, LOW);
   }
-  if (buttonState == HIGH) {
-    // turn LED on:
-    digitalWrite(Loud, HIGH);
-  } else {
-    // turn LED off:
-    digitalWrite(Loud, LOW);
+  
+  if (buttonState == HIGH)
+  {
+    digitalWrite(BLUE_LED, HIGH);
+    digitalWrite(BUZZER, HIGH);
+  }
+  else
+  {
+    digitalWrite(BLUE_LED, LOW);
+    digitalWrite(BUZZER, LOW);
   }
 }
