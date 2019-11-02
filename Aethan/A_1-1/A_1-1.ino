@@ -23,17 +23,68 @@
 
   http://www.arduino.cc/en/Tutorial/Blink
 */
+const int BlueLed = 10;
+const int Led_External= 13;
+const int Button= 2;
+const int Loud = 8;
+bool ButtonDown = false;
+bool LED_Power= false;
 
 // the setup function runs once when you press reset or power the board
 void setup() {
+
+  // initialize serial communications at 9600 bps:
+  Serial.begin(9600);
+  
   // initialize digital pin LED_BUILTIN as an output.
-  pinMode(LED_BUILTIN, OUTPUT);
+  pinMode(Led_External, OUTPUT);
+  pinMode(Button, INPUT);
+  pinMode(BlueLed, OUTPUT);
 }
 
 // the loop function runs over and over again forever
 void loop() {
-  digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
-  delay(1000);                       // wait for a second
-  digitalWrite(LED_BUILTIN, LOW);    // turn the LED off by making the voltage LOW
-  delay(1000);                       // wait for a second
+
+  int buttonState = digitalRead(Button);
+
+  // check if the pushbutton is pressed. If it is, the buttonState is HIGH:
+  if (buttonState == HIGH) {
+    
+    Serial.print("ButtonDown: ");
+    Serial.println(ButtonDown);
+    
+    ButtonDown = true;
+  }
+  else if (buttonState == LOW && ButtonDown == true) {
+    
+    LED_Power = !LED_Power;
+    ButtonDown = false;
+
+    Serial.print("LED_Power: ");
+    Serial.println(LED_Power);
+    Serial.print("ButtonDown: ");
+    Serial.println(ButtonDown);
+  }
+
+  if (LED_Power == true) {
+    // turn LED on:
+    digitalWrite(Led_External, HIGH);
+  } else {
+    // turn LED off:
+    digitalWrite(Led_External, LOW);
+  }
+    if (buttonState == HIGH) {
+    // turn LED on:
+    digitalWrite(BlueLed, HIGH);
+  } else {
+    // turn LED off:
+    digitalWrite(BlueLed, LOW);
+  }
+  if (buttonState == HIGH) {
+    // turn LED on:
+    digitalWrite(Loud, HIGH);
+  } else {
+    // turn LED off:
+    digitalWrite(Loud, LOW);
+  }
 }
