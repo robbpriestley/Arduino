@@ -11,13 +11,14 @@ got large. It's at the point here where pressing the display state doesn't work 
 gets re-initialized every time the SD card writes. Adding debug statements and messing around with the code to
 try to fix this destablizes unit and isn't working. It's just barely working.
 
+UPDATE: In order to get this to work, I had to eliminate the BMP pressure sensor.
+
 */
 // Data Logging Tutorial:    https://learn.adafruit.com/adafruit_data_logger_shield/light_and_temperature_logger_use_it
 // Data Logger Shield Specs: https://cdn-learn.adafruit.com/downloads/pdf/adafruit-data-logger-shield.pdf
 // Realtime Clock (RTC):     https://learn.adafruit.com/adafruit_data_logger_shield/using_the_real_time_clock_2
 // Button Tutorial:          https://www.arduino.cc/en/tutorial/button 
 // DHT Temperature Sensor:   https://learn.adafruit.com/dht
-// BMP Pressure Sensor:      https://learn.adafruit.com/adafruit-bmp388/arduino
 
 // LED resistors: 2k, Switch pull-down resistors: 10k, DHT pull-up resistor: 10k
 
