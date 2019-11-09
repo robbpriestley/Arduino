@@ -1,24 +1,24 @@
 /* *** ENVIRONMENT LOGGER ***
- *  
-Logs temperature in °C, humidity in %, and pressure in hPa
+ 
+Logs _temperature in °C, _humidity in %, and _pressure in hPa
 
-Left button: display state (temperature, humidity, pressure, rec time remaining)
+Left button: display state (_temperature, _humidity, _pressure, rec time remaining)
+Right button: display enable
 
-This program seems to be at the absolute limit of memory usage. I had to use a variety of coding optimizations
-and resorted to some less-than-ideal coding styles to get this program to work. It seems like adding the libraries
-for all of the different sensors and peripheral devices (SD card, RTC, DHT, BMP) is a big reason why the program
-got large. It's at the point here where pressing the display state doesn't work because the _displayState variable
-gets re-initialized every time the SD card writes. Adding debug statements and messing around with the code to
-try to fix this destablizes unit and isn't working. It's just barely working.
-
-UPDATE: In order to get this to work, I had to eliminate the BMP pressure sensor.
+2019-11-08
+----------
+This program wouldn't run properly on the UNO, so I switched to a Mega. This code is not always in the best style
+because I was attempting to meet the specific needs of the Arduino platform. There is an ongoing problem getting
+state variables to remain "uncorrupted" (?) during button press events and subsequent 7-segment display update.
+The workaround for that problem was to store the state variables in EEPROM instead of SRAM.
 
 */
-// Data Logging Tutorial:    https://learn.adafruit.com/adafruit_data_logger_shield/light_and_temperature_logger_use_it
+// Data Logging Tutorial:    https://learn.adafruit.com/adafruit_data_logger_shield/light_and__temperature_logger_use_it
 // Data Logger Shield Specs: https://cdn-learn.adafruit.com/downloads/pdf/adafruit-data-logger-shield.pdf
 // Realtime Clock (RTC):     https://learn.adafruit.com/adafruit_data_logger_shield/using_the_real_time_clock_2
 // Button Tutorial:          https://www.arduino.cc/en/tutorial/button 
 // DHT Temperature Sensor:   https://learn.adafruit.com/dht
+// BMP Pressure Sensor:      https://learn.adafruit.com/adafruit-bmp388/arduino
 
 // LED resistors: 2k, Switch pull-down resistors: 10k, DHT pull-up resistor: 10k
 
@@ -32,6 +32,8 @@ UPDATE: In order to get this to work, I had to eliminate the BMP pressure sensor
   5: SD card is write protected
   6: Log file error
   7: Unknown status
+  8: BMP init error
+  9: BMP read error
  */
 
 #include <SD.h>
@@ -39,13 +41,19 @@ UPDATE: In order to get this to work, I had to eliminate the BMP pressure sensor
 #include <SoftwareSerial.h>
 #include "DHT.h"
 #include "RTClib.h"
+#include "Adafruit_BMP3XX.h"
 
 #define DHTTYPE DHT22
-#define REC_PERIOD 60000                 // *** RECORDING PERIOD in Milliseconds ***
+#define REC_PERIOD 60000  // *** RECORDING PERIOD in Milliseconds ***
 #define PERIOD_FLASH 333
 #define PERIOD_FLASH_ACTIVITY 55
 #define REC_PERIOD_ARRAY_LEN 6
-#define EEPROM_ADDRESS_REC_PERIOD_IDX 0  // EEPROM Address for Recording Period Index
+
+// EEPROM ADDRESSES
+
+#define EEPROM_ADDRESS_DISP_EN  0  // EEPROM Address for Display Enabled bool
+#define EEPROM_ADDRESS_DISP_ST  1  // EEPROM Address for Display State short
+#define EEPROM_ADDRESS_REC_REM  2  // EEPROM Address for Recording Period Remaining
 
 // ANALOG PINS
 
@@ -54,7 +62,7 @@ UPDATE: In order to get this to work, I had to eliminate the BMP pressure sensor
 // DIGITAL PINS
 
 #define WRITE_D_PIN_S7S_RX        0   // 7-segment RX pin (dummy/unused?)
-#define READ_D_PIN_DHT            2   // Pin used to read the DHT22 temperature sensor
+#define READ_D_PIN_DHT            2   // Pin used to read the DHT22 _temperature sensor
 #define WRITE_D_PIN_S7S_TX        3   // 7-segment TX pin
 #define READ_D_PIN_BUTTON_DISP_EN 4   // Button to turn display on and off
 #define READ_D_PIN_BUTTON_DISP_ST 5   // Button to change recording period
@@ -69,19 +77,20 @@ bool _statusReady;
 bool _statusError;
 bool _flashSdWrite;
 bool _flashActivity;
-bool _displayEnabled;
 bool _buttonDisplayState;
 bool _buttonDisplayEnabled;
-
-int _displayState;  // 0 == temperature, 1 == humidity, 3 == remaining
 
 char _zero = '0';
 char _year[4] = {0};
 char _digit[2] = {0};
 char _timestamp[20] = {0};
-char _displayString[4];  // Will be used with sprintf to create strings
+char _displayString[5];     // Used with sprintf to create 7-segment display strings
 
 short _errorCode = 0;
+
+float _temperature = 0.0;
+float _humidity = 0.0;
+float _pressure = 0.0;
 
 unsigned long _recPeriodRemaining;
 unsigned long _lastMillisRec = 0;
@@ -95,7 +104,8 @@ unsigned long _currentMillisFlashActivity = 0;
 
 File _logfile;                      // SD card logfile
 RTC_PCF8523 _rtc;                   // Realtime clock
-DHT _dht(READ_D_PIN_DHT, DHTTYPE);  // Temperature/humidity sensor
+Adafruit_BMP3XX _bmp;               // Pressure sensor
+DHT _dht(READ_D_PIN_DHT, DHTTYPE);  // Temperature/_humidity sensor
 SoftwareSerial _s7s(WRITE_D_PIN_S7S_RX, WRITE_D_PIN_S7S_TX);
 
 void setup() 
@@ -104,6 +114,7 @@ void setup()
 
   PinInit();
   RtcInit();
+  BmpInit();
   CharInit();  
   _dht.begin();
   DisplayInit();
@@ -118,8 +129,7 @@ void loop()
 
   CheckSdInit(sdCardIn);
   DetermineStatusError(sdCardIn, sdCardWriteProtect);
-  DetermineStatusReady(sdCardIn, sdCardWriteProtect);
-  ButtonStatus();
+  DetermineStatusReady(sdCardIn, sdCardWriteProtect);  
   UpdateStatusLeds();
 
   _currentMillisRec = millis();
@@ -139,16 +149,22 @@ void loop()
 
   if (_currentMillisRec - _lastMillisRec >= REC_PERIOD || _first)
   {        
-    float temperature = _dht.readTemperature();
-    float humidity = _dht.readHumidity();
+    _temperature = _dht.readTemperature();
+    _humidity = _dht.readHumidity();
 
-    SdCardWrite(temperature, humidity);
-    UpdateSerial(temperature, humidity);
-    UpdateDisplay(temperature, humidity);
+    _bmp.performReading();
+    _pressure = _bmp.pressure / 100.0;
+
+    SdCardWrite();
+    UpdateSerial();
 
     _lastMillisRec = _currentMillisRec;
     _first = false;
   }
+
+  ButtonDisplayState();
+  ButtonDisplayEnabled();
+  UpdateDisplay();
 }
 
 void SdInit()
@@ -206,6 +222,23 @@ void RtcInit()
   // _rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));  // Uncomment to set date and time.
 }
 
+void BmpInit()
+{
+  if (!_bmp.begin()) {
+    _errorCode = 8;
+    Serial.println(_errorCode);
+    digitalWrite(WRITE_D_PIN_RED_LED, HIGH);
+    while (1);
+  }
+
+  _bmp.setTemperatureOversampling(BMP3_OVERSAMPLING_8X);
+  _bmp.setPressureOversampling(BMP3_OVERSAMPLING_4X);
+  _bmp.setIIRFilterCoeff(BMP3_IIR_FILTER_COEFF_3);
+
+  // Perform first reading to "clear" bad value
+  _bmp.performReading();
+}
+
 void CharInit()
 {
   _digit[0] = 'X';
@@ -225,9 +258,8 @@ void DisplayInit()
   _s7s.begin(9600);
   ClearDisplay();
   SetBrightness(255);
-
-  _displayState = 0;
-  _displayEnabled = true;
+  EEPROM.write(EEPROM_ADDRESS_DISP_EN, 1);
+  EEPROM.write(EEPROM_ADDRESS_DISP_ST, 0);
 }
 
 void CheckSdInit(int sdCardIn)
@@ -255,7 +287,7 @@ void DetermineStatusError(int sdCardIn, int sdCardWriteProtect)
     _statusError = true;
     _errorCode = 4;
   }
-  else if (sdCardIn == LOW && sdCardWriteProtect == HIGH)  // CD and WP pins are open drain and normal LOW/HIGH logic is reversed.
+  else if (sdCardIn == LOW && sdCardWriteProtect == HIGH)  // CD & WP pins: open drain. Normal LOW/HIGH logic is reversed.
   {
     _statusError = true;
     _errorCode = 5;
@@ -278,7 +310,7 @@ void DetermineStatusReady(int sdCardIn, int sdCardWriteProtect)
   _statusReady = !_statusError && sdCardIn == LOW && sdCardWriteProtect == LOW;
 }
 
-void ButtonStatus()
+void ButtonDisplayState()
 {
   // Button Display State
   
@@ -291,19 +323,31 @@ void ButtonStatus()
   else if (_buttonDisplayState)
   {
     _buttonDisplayState = false;
-
-    if (_displayState <= 1)
-    {
-      _displayState++;
-    }
-    else
-    {
-      _displayState = 0;
-    }
-
-    _first = true;
+    DetermineDisplayState();
   }
+}
+
+void DetermineDisplayState()
+{
+  short displayState = EEPROM.read(EEPROM_ADDRESS_DISP_ST);
   
+  if (displayState <= 2)
+  {
+    displayState++;
+  }
+  else
+  {
+    displayState = 0;
+  }
+
+  EEPROM.write(EEPROM_ADDRESS_DISP_ST, displayState);
+
+  Serial.print("Display state: ");
+  Serial.println(displayState);
+}
+
+void ButtonDisplayEnabled()
+{
   // Button Display Enabled
 
   int buttonDisplayEnable = digitalRead(READ_D_PIN_BUTTON_DISP_EN);
@@ -315,15 +359,34 @@ void ButtonStatus()
   else if (_buttonDisplayEnabled)
   {
     _buttonDisplayEnabled = false;
-    _displayEnabled = !_displayEnabled;
-
-    _first = true;
+    DetermineDisplayEnabled();
   }
+}
+
+void DetermineDisplayEnabled()
+{
+  short displayEnabled = EEPROM.read(EEPROM_ADDRESS_DISP_EN);
+  
+  if (displayEnabled)
+  {
+    displayEnabled = 0;
+  }
+  else
+  {
+    displayEnabled = 1;
+  }
+
+  EEPROM.write(EEPROM_ADDRESS_DISP_EN, displayEnabled);
+
+  Serial.print("Display enabled: ");
+  Serial.println(displayEnabled);
 }
 
 void UpdateStatusLeds()
 {
-  if (!_displayEnabled)
+  short displayEnabled = EEPROM.read(EEPROM_ADDRESS_DISP_EN);
+  
+  if (displayEnabled == 0)
   {
     digitalWrite(WRITE_D_PIN_GREEN_LED, LOW);
     digitalWrite(WRITE_D_PIN_RED_LED, LOW);
@@ -348,7 +411,10 @@ void RecPeriodRemaining()
     _lastMillisFlashActivity = _currentMillisFlashActivity;
     
     _recPeriodRemaining = recPeriodRemaining;
-    Serial.println(_recPeriodRemaining / 1000); 
+
+    int remaining = (_recPeriodRemaining / 1000) >= (REC_PERIOD / 1000) ? (REC_PERIOD / 1000) : (_recPeriodRemaining / 1000) + 1;
+    EEPROM.write(EEPROM_ADDRESS_REC_REM, remaining);
+    Serial.println(remaining); 
   }
 }
 
@@ -390,21 +456,25 @@ void ModifyTimestampComponent(int digit, int i)
 }
 
 /*
-  Previously, GetTimestamp() was called once, at the beginning of the loop() function, and the returned value was stored in a local string variable for re-use.
-  However, due to some glitch, if the DHT was accessed after the call to GetTimestamp(), the local string variable value got corrupted and would be populated
-  with non-printable characters. This would look bad at best, and at worst it seemed to cause general havoc such as hanging the Uno or restarting it. So, I
-  decided to only access the RTC immediately prior to using the timestamp value. This seems to have resolved the problem with the glitch.
+  Previously, GetTimestamp() was called once, at the beginning of the loop() function, and the returned value was 
+  stored in a local string variable for re-use. However, due to some glitch, if the DHT was accessed after the call
+  to GetTimestamp(), the local string variable value got corrupted and would be populated with non-printable characters. 
+  This would look bad at best, and at worst it seemed to cause general havoc such as hanging the Uno or restarting it. 
+  So, I decided to only access the RTC immediately prior to using the timestamp value. This seems to have resolved the 
+  problem with the glitch.
 */
 
-void SdCardWrite(float temperature, float humidity)
+void SdCardWrite()
 {
   UpdateTimestamp();
   
   _logfile.print(_timestamp);
   _logfile.print(',');
-  _logfile.print(temperature);
+  _logfile.print(_temperature);
   _logfile.print(',');
-  _logfile.print(humidity);
+  _logfile.print(_humidity);
+  _logfile.print(',');
+  _logfile.print(_pressure);
   _logfile.println();
 
   _logfile.flush();  // Don't do this too frequently, i.e. < 1s
@@ -413,7 +483,7 @@ void SdCardWrite(float temperature, float humidity)
   _lastMillisFlashSdWrite = _currentMillisFlashSdWrite;
 }
 
-void UpdateSerial(float temperature, float humidity)
+void UpdateSerial()
 {
   UpdateTimestamp();
   
@@ -421,9 +491,12 @@ void UpdateSerial(float temperature, float humidity)
   {
     Serial.print(_timestamp);
     Serial.print(',');
-    Serial.print(temperature);
+    Serial.print(_temperature);
     Serial.print(',');
-    Serial.println(humidity);
+    Serial.print(_humidity);
+    Serial.print(',');
+    Serial.print(_pressure);
+    Serial.println();
   }
   else if (_statusError)
   {
@@ -440,29 +513,80 @@ void UpdateSerial(float temperature, float humidity)
   }
 }
 
-void UpdateDisplay(float temperature, float humidity)
+void UpdateDisplay()
 {  
-  if (_displayEnabled && _displayState == 0)
+  short displayEnabled = EEPROM.read(EEPROM_ADDRESS_DISP_EN);
+  short displayState = EEPROM.read(EEPROM_ADDRESS_DISP_ST);
+  
+  if (displayEnabled == 1)
   {
-    sprintf(_displayString, "%4d", (int)(temperature * 10));
-    _s7s.print(_displayString);
-    SetDecimals(0b00000100);
-  }
-  else if (_displayEnabled && _displayState == 1)
-  {
-    sprintf(_displayString, "%4d", (int)(humidity * 10));
-    _s7s.print(_displayString);
-    SetDecimals(0b00000100);
-  }
-  else if (_displayEnabled && _displayState == 2)
-  {
-    sprintf(_displayString, "%4d", _recPeriodRemaining / 1000);
-    _s7s.print(_displayString);
-    SetDecimals(0b00000000);
+    if (_statusError)
+    {
+      sprintf(_displayString, "%d", _errorCode);
+      LeftPadDisplayStringWithSpaces(_errorCode);
+      _displayString[2] = 'E';
+      _displayString[4] = '\0';
+      _s7s.print(_displayString);
+      SetDecimals(0b00000000);
+    }
+    else if (displayState == 0)
+    {
+      sprintf(_displayString, "%4d", (int)(_temperature * 10));
+      _s7s.print(_displayString);
+      SetDecimals(0b00000100);
+    }
+    else if (displayState == 1)
+    {
+      sprintf(_displayString, "%4d", (int)(_humidity * 10));
+      _s7s.print(_displayString);
+      SetDecimals(0b00000100);
+    }
+    else if (displayState == 2)
+    {
+      int pressure = round(_pressure);
+      sprintf(_displayString, "%d", pressure);
+      LeftPadDisplayStringWithSpaces(pressure);
+      _s7s.print(_displayString);
+      SetDecimals(0b00000000);
+    }
+    else if (displayState == 3)
+    {
+      int remaining = EEPROM.read(EEPROM_ADDRESS_REC_REM);
+      sprintf(_displayString, "%d", remaining);
+      LeftPadDisplayStringWithSpaces(remaining);
+      _displayString[4] = '\0';  // Null termination here seems to be necessary to prevent the display from going haywire.
+      _s7s.print(_displayString);
+      SetDecimals(0b00000000);
+    }
   }
   else
   {
     ClearDisplay();
+  }
+}
+
+void LeftPadDisplayStringWithSpaces(int i)
+{
+  if (i < 10)
+  {
+    _displayString[3] = _displayString[0];
+    _displayString[2] = ' ';
+    _displayString[1] = ' ';
+    _displayString[0] = ' ';
+  }
+  else if (i < 100)
+  {
+    _displayString[3] = _displayString[1];
+    _displayString[2] = _displayString[0];
+    _displayString[1] = ' ';
+    _displayString[0] = ' ';
+  }
+  else if (i < 1000)
+  {
+    _displayString[3] = _displayString[2];
+    _displayString[2] = _displayString[1];
+    _displayString[1] = _displayString[0];
+    _displayString[0] = ' ';
   }
 }
 
