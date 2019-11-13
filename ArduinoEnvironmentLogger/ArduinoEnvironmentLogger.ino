@@ -219,7 +219,7 @@ void RtcInit()
     while (1);
   }
 
-  _rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));  // Uncomment to set date and time.
+  //_rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));  // Uncomment to set date and time.
 }
 
 void BmpInit()
