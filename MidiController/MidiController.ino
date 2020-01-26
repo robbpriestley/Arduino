@@ -18,14 +18,6 @@ byte midiCh = 15; // MIDI channel to be used
 byte note = 1;    // Lowest note to be used
 byte cc = 1;      // Lowest MIDI CC to be used
 
-// *** LED BRIGHTNESS ***
-
-const int analogInPin = A0;  // Analog input pin that the potentiometer is attached to
-const int analogOutPin = 9;  // Analog output pin that the LED is attached to
-
-int sensorValue = 0;        // value read from the pot
-int outputValue = 0;        // value output to the PWM (analog out)
-
 void setup() 
 {
 
@@ -38,10 +30,6 @@ void setup()
 }
 
 void loop() {
-
-    sensorValue = analogRead(analogInPin);
-    outputValue = map(sensorValue, 0, 1023, 0, 255);
-    analogWrite(analogOutPin, outputValue);
     
     buttons();
 
