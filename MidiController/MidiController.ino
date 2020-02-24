@@ -6,7 +6,7 @@
 #include "MIDIUSB.h" // Download it here: https://github.com/arduino-libraries/MIDIUSB
 
 const int NButtons = 5;
-const int buttonPin[NButtons] = {2, 3 ,4 ,5, 6};
+const int buttonPin[NButtons] = {2, 3 ,4 ,5};
 
 int buttonCState[NButtons] = {0};  // stores the button current value
 int buttonPState[NButtons] = {0};  // stores the button previous value
@@ -16,7 +16,7 @@ unsigned long debounceDelay = 13;                // the debounce time; increase 
 
 byte midiCh = 15; // MIDI channel to be used
 byte note = 1;    // Lowest note to be used
-byte cc = 1;      // Lowest MIDI CC to be used
+byte cc = 85;     // Lowest MIDI CC to be used
 
 void setup() 
 {
@@ -50,18 +50,11 @@ void buttons()
             
             if (buttonCState[i] == LOW)
             {
-                noteOn(midiCh, note + i, 127);  // channel, note, velocity
+                // NoteOn(midiCh, note + i, 127);
+                ControlChange(midiCh, cc + i, 127);
                 MidiUSB.flush();
                 
                 Serial.print("button on  >> ");
-                Serial.println(i);
-            }
-            else
-            {
-                noteOn(midiCh, note + i, 0);  // channel, note, velocity
-                MidiUSB.flush();
-                
-                Serial.print("button off >> ");
                 Serial.println(i);
             }
             
@@ -71,13 +64,19 @@ void buttons()
     }
 }
 
-void noteOn(byte channel, byte pitch, byte velocity) 
+void ControlChange(byte channel, byte control, byte value)
+{
+  midiEventPacket_t event = {0x0B, 0xB0 | channel, control, value};
+  MidiUSB.sendMIDI(event);
+}
+
+void NoteOn(byte channel, byte pitch, byte velocity) 
 {
     midiEventPacket_t noteOn = {0x09, 0x90 | channel, pitch, velocity};
     MidiUSB.sendMIDI(noteOn);
 }
 
-void noteOff(byte channel, byte pitch, byte velocity)
+void NoteOff(byte channel, byte pitch, byte velocity)
 {
     midiEventPacket_t noteOff = {0x08, 0x80 | channel, pitch, velocity};
     MidiUSB.sendMIDI(noteOff);
