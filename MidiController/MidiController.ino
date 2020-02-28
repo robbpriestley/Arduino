@@ -6,7 +6,7 @@
 #include "MIDIUSB.h" // Download it here: https://github.com/arduino-libraries/MIDIUSB
 
 const int NButtons = 5;
-const int buttonPin[NButtons] = {2, 3 ,4 ,5};
+const int buttonPin[NButtons] = {2, 3 ,4 ,5, 6};
 
 int buttonCState[NButtons] = {0};  // stores the button current value
 int buttonPState[NButtons] = {0};  // stores the button previous value
