@@ -5,8 +5,8 @@
 
 #include "MIDIUSB.h" // Download it here: https://github.com/arduino-libraries/MIDIUSB
 
-const int NButtons = 5;
-const int buttonPin[NButtons] = {2, 3 ,4 ,5, 6};
+const int NButtons = 9;
+const int buttonPin[NButtons] = {5, 6, 7, 8, 9, 10, 14, 15, 16};
 
 int buttonCState[NButtons] = {0};  // stores the button current value
 int buttonPState[NButtons] = {0};  // stores the button previous value
@@ -14,9 +14,9 @@ int buttonPState[NButtons] = {0};  // stores the button previous value
 unsigned long lastDebounceTime[NButtons] = {0};  // the last time the output pin was toggled
 unsigned long debounceDelay = 100;               // the debounce time in ms; increase if the output flickers
 
-byte midiCh = 15; // MIDI channel to be used
+byte midiCh = 16; // MIDI channel to be used
 byte note = 1;    // Lowest note to be used
-byte cc = 85;     // Lowest MIDI CC to be used
+byte cc = 102;    // Lowest MIDI CC to be used
 
 void setup() 
 {
