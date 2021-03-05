@@ -14,7 +14,7 @@ int buttonPState[NButtons] = {0};  // stores the button previous value
 unsigned long lastDebounceTime[NButtons] = {0};  // the last time the output pin was toggled
 unsigned long debounceDelay = 100;               // the debounce time in ms; increase if the output flickers
 
-byte midiCh = 16; // MIDI channel to be used
+byte midiCh = 15; // MIDI channel to be used (channel - 1, zero indexed!)
 byte note = 1;    // Lowest note to be used
 byte cc = 102;    // Lowest MIDI CC to be used
 
